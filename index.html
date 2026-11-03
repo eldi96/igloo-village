@@ -1268,15 +1268,19 @@ async function goInside(ig) {
     });
     room = lighthouseRoom;
   } else {
-    if (!iglooRoom) iglooRoom = (await import('./room.js')).createRoom();
+    if (!iglooRoom) iglooRoom = (await import('./room.js')).createRoom(canvas);
     room = iglooRoom;
+    await room.ready;
   }
-  room.setAspect(W() / H());
+  room.setAspect?.(W() / H());
   if (ig.gate) ig.gate.visible = false;
   fadeThrough(() => {
     mode = 'room';
-    renderPass.scene = room.scene;
-    renderPass.camera = room.camera;
+    if (room === iglooRoom) room.show();
+    else {
+      renderPass.scene = room.scene;
+      renderPass.camera = room.camera;
+    }
     showRoomActions(ig);
   });
 }
@@ -1286,6 +1290,7 @@ function goOutside(ig) {
   canvas.style.cursor = '';
   fadeThrough(() => {
     if (ig.gate) ig.gate.visible = true;
+    iglooRoom?.hide();
     renderPass.scene = scene;
     renderPass.camera = camera;
     mode = 'in';
@@ -1306,14 +1311,17 @@ function frame() {
   // 프레임이 낮은 기기에서도 카메라 이동 시간이 늘어지지 않게 상한을 넉넉히 둔다
   const dt = Math.min(clock.getDelta(), 0.25), t = clock.elapsedTime;
   if (mode === 'room') {
-    const writingMail = mailComposer?.isOpen();
-    room.update(t, writingMail ? 0 : mx, writingMail ? 0 : my);
-    renderer.info.reset();
-    composer.render();
-    stats.triangles = renderer.info.render.triangles;
-    stats.calls = renderer.info.render.calls;
-    watchSpeed();
     igloos.forEach(ig => { if (ig.label) ig.label.style.display = 'none'; });
+    // 이글루 안은 이미지 한 장이라 3D를 그리지 않는다
+    if (room !== iglooRoom) {
+      const writingMail = mailComposer?.isOpen();
+      room.update(t, writingMail ? 0 : mx, writingMail ? 0 : my);
+      renderer.info.reset();
+      composer.render();
+      stats.triangles = renderer.info.render.triangles;
+      stats.calls = renderer.info.render.calls;
+      watchSpeed();
+    }
     requestAnimationFrame(frame);
     return;
   }
@@ -1410,7 +1418,7 @@ addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   fitMap();
   if (mode === 'map') applyView();
-  if (room) room.setAspect(W() / H());
+  room?.setAspect?.(W() / H());
   renderer.setSize(W(), H());
   composer.setSize(W(), H());
 });
