@@ -155,4 +155,43 @@ do $$ begin
     alter publication supabase_realtime add table public.igloos, public.mail_messages;
   end if;
 end $$;
+
+-- 초대 코드 가입. 코드는 해시만 저장하고, 수강생 역할로만 승인한다.
+create table private.invite_codes (
+  code_hash text primary key,
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+revoke all on private.invite_codes from public, anon, authenticated;
+create function private.invite_is_valid(p_code text) returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from private.invite_codes c
+    where c.active and c.code_hash = encode(pg_catalog.sha256(pg_catalog.convert_to(upper(trim(coalesce(p_code, ''))), 'UTF8')), 'hex')
+  );
+$$;
+revoke all on function private.invite_is_valid(text) from public, anon, authenticated;
+create function public.check_invite(p_code text) returns boolean language sql stable security definer set search_path = '' as $$
+  select private.invite_is_valid(p_code);
+$$;
+revoke all on function public.check_invite(text) from public;
+grant execute on function public.check_invite(text) to anon, authenticated;
+create function public.join_with_invite(p_code text, p_display_name text) returns public.members
+language plpgsql security definer set search_path = '' as $$
+declare
+  uid uuid := auth.uid();
+  name text := trim(coalesce(p_display_name, ''));
+  result public.members;
+begin
+  if uid is null then raise exception '먼저 로그인해주세요.'; end if;
+  if char_length(name) not between 1 and 40 then raise exception '이름은 1~40자로 입력해주세요.'; end if;
+  if not private.invite_is_valid(p_code) then raise exception '초대 코드가 맞지 않아요.'; end if;
+  insert into public.members (id, display_name, role, approved)
+  values (uid, name, 'student', true)
+  on conflict (id) do update set approved = true
+  returning * into result;
+  return result;
+end;
+$$;
+revoke all on function public.join_with_invite(text, text) from public, anon;
+grant execute on function public.join_with_invite(text, text) to authenticated;
 commit;

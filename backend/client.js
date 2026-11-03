@@ -7,6 +7,14 @@ const PROJECT_COLUMNS = 'id,igloo_id,owner_id,title,description,url,created_at';
 const MAIL_COLUMNS = 'id,sender_id,recipient_id,body,link,created_at,read_at';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Supabase 로그인은 이메일 형식을 요구한다. 아이디를 메일이 오가지 않는 주소로 바꿔 쓴다.
+const ID_PATTERN = /^[a-z0-9_]{3,20}$/;
+function idToEmail(id) {
+  const clean = String(id ?? '').trim().toLowerCase();
+  if (!ID_PATTERN.test(clean)) throw new Error('아이디는 영문 소문자, 숫자, _로 3~20자여야 해요.');
+  return `${clean}@igloo-village.eldi96.github.io`;
+}
+
 export function createVillageBackend({ config = supabaseConfig, loadSdk = () => import(SDK_URL) } = {}) {
   const events = new EventTarget();
   const status = { phase: 'idle', projectRef: null, homeCount: 0, error: null };
@@ -79,12 +87,42 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
       if (!data.user) return null;
       return unwrap(await api.from('members').select('id,display_name,role,approved').eq('id', data.user.id).maybeSingle());
     },
-    async signInWithGoogle() {
+    async currentUser() { const api = await ready(); return (await api.auth.getUser()).data.user; },
+    async signIn(id, password) {
       const api = await ready();
-      // Google 제공자와 URL 허용 목록을 대시보드에서 설정한 후 호출한다.
-      return unwrap(await api.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: new URL(location.pathname, location.origin).href } }));
+      return unwrap(await api.auth.signInWithPassword({ email: idToEmail(id), password }));
+    },
+    // 코드를 먼저 확인해 잘못된 코드로 계정만 생기는 일을 막는다. 실제 승인은 joinWithInvite가 DB에서 한다.
+    async signUp({ id, password, displayName, code }) {
+      const api = await ready();
+      const email = idToEmail(id);
+      if (!unwrap(await api.rpc('check_invite', { p_code: code }))) throw new Error('초대 코드가 맞지 않아요.');
+      // 이메일 인증이 켜져 있으면 없는 주소로 메일이 나가므로 가입을 막는다.
+      const settings = await fetch(`${config.url}/auth/v1/settings`, { headers: { apikey: config.publishableKey } }).then(r => r.json());
+      if (!settings.mailer_autoconfirm) throw new Error('가입이 아직 준비되지 않았어요. 강사님께 알려주세요.');
+      const { session } = unwrap(await api.auth.signUp({ email, password }));
+      if (!session) throw new Error('이미 쓰고 있는 아이디예요.');
+      return unwrap(await api.rpc('join_with_invite', { p_code: code, p_display_name: displayName }));
+    },
+    async joinWithInvite(code, displayName) {
+      const api = await ready();
+      return unwrap(await api.rpc('join_with_invite', { p_code: code, p_display_name: displayName }));
     },
     async signOut() { const api = await ready(); const { error } = await api.auth.signOut(); if (error) throw error; },
+    // 로그인 상태가 바뀔 때마다 호출한다. 반환한 함수로 구독을 끊는다.
+    async onAuthChange(callback) {
+      const api = await ready();
+      const { data } = api.auth.onAuthStateChange((_event, session) => {
+        // 인증 콜백 안에서 다른 Supabase 호출을 기다리면 멈출 수 있어 다음 틱으로 넘긴다.
+        setTimeout(() => callback(session?.user ?? null), 0);
+      });
+      return () => data.subscription.unsubscribe();
+    },
+    // 이름은 승인된 회원에게만 보인다(RLS). 그 외에는 빈 목록이다.
+    async getMemberNames() {
+      const api = await ready();
+      return unwrap(await api.from('members').select('id,display_name'));
+    },
     async claimIgloo(id) {
       homeId(id); const { api } = await requireMember('student');
       return unwrap(await api.rpc('claim_igloo', { p_igloo_id: id }));
