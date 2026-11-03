@@ -109,7 +109,9 @@ const fitMap = () => {
 };
 const applyView = () => {
   const t = closeness();
-  view.x = Math.min(Math.max(view.x, CENTER.x - 26 * t), CENTER.x + 26 * t);
+  // 양옆 끝 이글루도 가운데 쪽으로 끌어올 수 있게 좌우는 다 축소해도 여유를 둔다
+  const panX = 14 + 22 * t;
+  view.x = Math.min(Math.max(view.x, CENTER.x - panX), CENTER.x + panX);
   view.z = Math.min(Math.max(view.z, CENTER.z - 20 * t), CENTER.z + 20 * t);
   const p = pitch(), lift = 2 + 4 * (1 - t);
   camPos.set(view.x, Math.sin(p) * view.d + lift, view.z + Math.cos(p) * view.d);
@@ -1207,7 +1209,7 @@ async function syncVillage(raiseHome = null) {
         }
         renderer.shadowMap.needsUpdate = true;
       }
-      const label = ig.mine ? '내 이글루' : nameOf.get(ownerId);
+      const label = nameOf.get(ownerId) || (ig.mine ? '내 이글루' : null);
       if (label) addLabel(ig, label);
       else if (ig.label) {
         ig.label.remove();
