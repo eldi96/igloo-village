@@ -7,13 +7,23 @@
 <style>
   html, body { margin: 0; height: 100%; background: #050d18; color: #eef6fb; font-family: system-ui, "Malgun Gothic", sans-serif; overflow: hidden; }
   canvas { display: block; position: fixed; inset: 0; touch-action: none; }
-  .top { position: fixed; top: 20px; left: 24px; right: 24px; display: flex; justify-content: space-between; font-size: 13px; color: #e3edf4; text-shadow: 0 1px 6px rgba(0, 0, 0, .7); pointer-events: none; }
-  .top b { color: #f4fbff; font-size: 15px; font-weight: 500; }
-  .bar { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 10px; background: rgba(5, 13, 24, .72); border: 1px solid rgba(255, 255, 255, .14); font-size: 13px; white-space: nowrap; max-width: calc(100vw - 32px); }
-  .bar button { font: inherit; color: #eef6fb; background: transparent; border: 1px solid rgba(255, 255, 255, .4); border-radius: 7px; padding: 5px 11px; cursor: pointer; }
-  .bar button.primary { background: #eef6fb; color: #071320; border-color: #eef6fb; }
-  .label { position: fixed; transform: translate(-50%, 0); padding: 1px 6px; border-radius: 5px; background: rgba(5, 13, 24, .62); font-size: 12px; color: #eef6fb; font-weight: 500; pointer-events: none; white-space: nowrap; }
-  .tip { position: fixed; transform: translate(-50%, -130%); padding: 5px 9px; border-radius: 6px; background: #071320; font-size: 12px; pointer-events: none; display: none; white-space: nowrap; }
+  .top { position: fixed; top: 20px; left: 24px; right: 24px; display: flex; justify-content: flex-end; font-size: 13px; color: #e3edf4; text-shadow: 0 1px 6px rgba(0, 0, 0, .7); pointer-events: none; }
+  .bar[hidden] { display: none; }
+  .bar { position: fixed; z-index: 2; left: 50%; bottom: 28px; transform: translate(-50%, 0); box-sizing: border-box; width: max-content; max-width: min(420px, calc(100vw - 40px)); color: #eef4f7; font-size: 13px; line-height: 1.5; text-align: center; }
+  .bar[data-kind="hint"] { padding: 6px 0; color: #edf4f8; font-size: 12px; letter-spacing: .02em; text-shadow: 0 1px 3px #173047, 0 2px 12px rgba(5,13,24,.8); pointer-events: none; }
+  .bar[data-kind="actions"], .bar[data-kind="notice"] { padding: 17px 20px 16px; border: 1px solid rgba(224,239,250,.12); border-radius: 16px; background: rgba(9,22,34,.86); box-shadow: 0 8px 32px rgba(0,7,15,.2), inset 0 1px rgba(255,255,255,.025); backdrop-filter: blur(8px); }
+  .bar-message { display: block; text-wrap: balance; }
+  .bar[data-kind="actions"] .bar-message { font-size: 14px; font-weight: 500; letter-spacing: -.02em; }
+  .bar-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 13px; }
+  .bar button { min-height: 38px; padding: 8px 13px; border: 1px solid rgba(232,242,249,.1); border-radius: 9px; background: rgba(233,243,250,.045); color: #d2dee7; font: inherit; font-weight: 500; line-height: 1.3; cursor: pointer; touch-action: manipulation; transition: transform 120ms cubic-bezier(.16,1,.3,1), background-color 120ms ease, color 120ms ease; }
+  .bar button.primary { border-color: #e5edf3; background: #e5edf3; color: #152431; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+  .bar button:active { transform: scale(.97); }
+  .bar button:focus-visible { outline: 2px solid #edf6ff; outline-offset: 4px; }
+  @media (hover: hover) and (pointer: fine) { .bar button:hover { background: rgba(233,243,250,.11); color: #fff; } .bar button.primary:hover { background: #fff; color: #152431; } }
+  @media (max-width: 800px) { .bar { bottom: 80px; } .bar[data-kind="actions"], .bar[data-kind="notice"] { padding: 16px 18px; } }
+  @media (pointer: coarse) { .bar button { min-height: 44px; } }
+  @media (prefers-reduced-motion: reduce) { .bar button { transition: background-color 100ms linear; } .bar button:active { transform: none; } }
+  .label { position: fixed; transform: translate(-50%, -100%); margin-top: -6px; padding: 1px 6px; border-radius: 5px; background: rgba(5, 13, 24, .62); font-size: 12px; color: #eef6fb; font-weight: 500; pointer-events: none; white-space: nowrap; }
   .perf { position: fixed; left: 24px; bottom: 24px; padding: 6px 10px; border-radius: 7px; background: rgba(5, 13, 24, .72); font-size: 12px; line-height: 1.5; font-variant-numeric: tabular-nums; pointer-events: none; }
   .fade { position: fixed; inset: 0; background: #120a06; opacity: 0; pointer-events: none; transition: opacity .45s ease; }
   .fallback { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 24px; text-align: center; }
@@ -26,14 +36,20 @@
 </script>
 </head>
 <body>
-<div class="top"><b>서비스 이름</b><span id="count"></span></div>
+<div class="top"><span id="count"></span></div>
 <div class="fade" id="fade"></div>
-<div class="bar" id="bar" aria-live="polite"></div>
-<div class="tip" id="tip"></div>
+<div class="bar" id="bar" aria-live="polite" aria-atomic="true"></div>
 <div class="perf" id="perf">측정 중…</div>
 <div class="fallback" id="fallback">이 브라우저에서는 3D 화면을 띄울 수 없어요.</div>
 <script type="module">
 import * as THREE from 'three';
+import { villageBackend } from './backend/client.js';
+
+// DB 연결로 화면 렌더링을 기다리게 하지 않는다. 조작의 저장 연동은 로그인 UI 연결 후 진행한다.
+window.__iglooBackendStatus = villageBackend.status;
+villageBackend.onStatusChange(status => { document.documentElement.dataset.supabase = status.phase; });
+villageBackend.connect().catch(error => { console.warn('Supabase 연결을 확인해주세요:', error.message); });
+
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -334,6 +350,39 @@ const snowBump = makeSnowBump();
   scene.add(outer);
 }
 
+// 산 쪽에 머무는 얇은 타이포그래피. 한 장의 텍스처만 사용한다.
+const mountainTitleAnchor = new THREE.Vector3(0, 22, -82);
+const TITLE_DEPTH = 1.08;
+const mountainTitle = (() => {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1536; canvas.height = 256;
+  const c = canvas.getContext('2d');
+  c.font = '300 102px "Segoe UI", sans-serif';
+  c.textBaseline = 'middle';
+  const text = 'IGLOO VILLAGE', tracking = 19;
+  const letters = [...text];
+  const width = letters.reduce((sum, letter) => sum + c.measureText(letter).width, 0) + (letters.length - 1) * tracking;
+  const tint = c.createLinearGradient(0, 76, 0, 180);
+  tint.addColorStop(0, '#d7e4e8'); tint.addColorStop(1, '#a0b9c4');
+  c.fillStyle = tint;
+  let x = (canvas.width - width) / 2;
+  for (const letter of letters) {
+    c.fillText(letter, x, 128);
+    x += c.measureText(letter).width + tracking;
+  }
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  const title = new THREE.Sprite(new THREE.SpriteMaterial({
+    map, transparent: true, opacity: 0.66, depthTest: true, depthWrite: false,
+    fog: false, toneMapped: false
+  }));
+  // 투영 위치와 크기는 유지하면서 글자를 산맥 뒤의 깊이로 보낸다.
+  title.position.copy(camera.position).lerp(mountainTitleAnchor, TITLE_DEPTH);
+  title.scale.set(90 * TITLE_DEPTH, 15 * TITLE_DEPTH, 1);
+  title.renderOrder = 2;
+  scene.add(title);
+  return title;
+})();
 // 내리는 눈
 {
   const n = 1100, a = new Float32Array(n * 3);
@@ -353,12 +402,13 @@ const snowBump = makeSnowBump();
 const snowfall = scene.children[scene.children.length - 1];
 
 // 이글루
-const OWNERS = { 1: ['김OO', 0xe2583e], 4: ['이OO', 0x3f8ae0], 7: ['박OO', 0x1fae80], 10: ['한OO', 0x8a6fe0], 13: ['최OO', 0xe0558c], 16: ['정OO', 0xe0a030], 19: ['오OO', 0x18a0a0], 22: ['윤OO', 0x534ab7] };
+// 등대 아래 왼쪽 끝 이글루를 기능 확인용으로 사용한다.
+const TEST_IGLOO_INDEX = 21;
 const blocks = [];
 const dummy = new THREE.Object3D();
 const pushBlock = (M, tint) => {
   dummy.updateMatrix();
-  blocks.push({ m: M.clone().multiply(dummy.matrix), c: tint });
+  blocks.push({ m: M.clone().multiply(dummy.matrix), c: tint, home: idx, center: [M.elements[12], M.elements[13], M.elements[14]] });
 };
 const domeInner = new THREE.SphereGeometry(R * 0.9, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2);
 const moundGeo = new THREE.SphereGeometry(1, 32, 10);
@@ -433,23 +483,90 @@ const hitMat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: fals
 const hitGeo = new THREE.SphereGeometry(R * 1.08, 10, 8);
 let idx = 0;
 
+// 천과 깃대 자원은 모든 이글루가 공유한다.
+const flagGeo = new THREE.PlaneGeometry(1.18, 0.72, 24, 12);
+flagGeo.translate(0.59, 0, 0);
+const flagPoleGeo = new THREE.CylinderGeometry(0.028, 0.039, 3.18, 10);
+const flagMetal = new THREE.MeshStandardMaterial({ color: 0x66717a, roughness: 0.48, metalness: 0.7 });
+const flagPoleMat = new THREE.MeshStandardMaterial({ color: 0x514638, roughness: 0.8 });
+const flagRingGeo = new THREE.TorusGeometry(0.049, 0.012, 4, 10);
+const flagCapGeo = new THREE.SphereGeometry(0.054, 10, 6);
+const flagFootGeo = new THREE.CylinderGeometry(0.066, 0.09, 0.28, 10);
+const flagTextures = new Map();
+function flagTexture(color) {
+  if (flagTextures.has(color)) return flagTextures.get(color);
+  const canvas = document.createElement('canvas');
+  canvas.width = 512; canvas.height = 320;
+  const c = canvas.getContext('2d');
+  const tone = new THREE.Color(color).lerp(new THREE.Color(0x414955), 0.26).multiplyScalar(0.86);
+  c.fillStyle = '#' + tone.getHexString(); c.fillRect(0, 0, 512, 320);
+  // 은은한 직조 무늬. 난수를 쓰지 않아 마을 배치에 영향을 주지 않는다.
+  c.fillStyle = 'rgba(255,255,255,.045)';
+  for (let y = 0; y < 320; y += 4) c.fillRect(0, y, 512, 1);
+  c.fillStyle = 'rgba(0,0,0,.045)';
+  for (let x = 0; x < 512; x += 4) c.fillRect(x, 0, 1, 320);
+  c.fillStyle = 'rgba(10,18,27,.16)'; c.fillRect(0, 0, 23, 320);
+  c.strokeStyle = 'rgba(241,233,211,.48)'; c.lineWidth = 1.5;
+  c.setLineDash([5, 5]); c.strokeRect(12, 12, 488, 296); c.setLineDash([]);
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+  flagTextures.set(color, map);
+  return map;
+}
+const flagDeform = `
+  uniform float flagTime;
+  uniform float flagPhase;
+  vec3 flagPoint(vec3 p) {
+    float u = clamp(p.x / 1.18, 0.0, 1.0);
+    float v = p.y / 0.72 + 0.5;
+    float t = flagTime;
+    float gust = 0.72 + 0.22 * sin(t * 0.63 + flagPhase);
+    float wave = sin(u * 7.0 - t * 2.5 + flagPhase + v * 0.7);
+    float ripple = sin(u * 17.0 - t * 4.1 + v * 3.0 + flagPhase) * 0.022;
+    p.z += pow(u, 1.15) * (wave * 0.14 * gust + ripple + 0.07);
+    p.y -= 0.105 * u + 0.045 * sin(v * 3.141593) * exp(-u * 9.0);
+    p.y += u * u * 0.025 * sin(u * 8.0 - t * 2.5 + flagPhase);
+    p.x -= u * u * (0.025 + 0.025 * wave);
+    return p;
+  }
+`;
 const makeFlag = (ig, color) => {
   const g = new THREE.Group();
-  g.position.set(R + 0.85, 0, 0.7);
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 3.1, 8), new THREE.MeshStandardMaterial({ color: 0x4c3a28, roughness: 0.8 }));
-  pole.position.y = 1.55;
-  g.add(pole);
-  const clothGeo = new THREE.PlaneGeometry(1, 0.6, 12, 4);
-  clothGeo.translate(0.5, 0, 0);
-  const cloth = new THREE.Mesh(clothGeo, new THREE.MeshStandardMaterial({ color, side: THREE.DoubleSide, roughness: 0.75 }));
-  cloth.position.y = 2.75;
-  g.add(cloth);
+  g.position.set(R + 0.35, 0, 0.7);
+  const pole = new THREE.Mesh(flagPoleGeo, flagPoleMat);
+  pole.position.y = 1.59; g.add(pole);
+  const foot = new THREE.Mesh(flagFootGeo, flagMetal);
+  foot.position.y = 0.14; g.add(foot);
+  const cap = new THREE.Mesh(flagCapGeo, flagMetal);
+  cap.position.y = 3.2; g.add(cap);
+  for (const y of [2.34, 3.06]) {
+    const ring = new THREE.Mesh(flagRingGeo, flagMetal);
+    ring.rotation.x = Math.PI / 2; ring.position.y = y; g.add(ring);
+  }
+  const time = { value: 0 }, phase = { value: rng() * 6 };
+  const material = new THREE.MeshStandardMaterial({
+    map: flagTexture(color), side: THREE.DoubleSide, roughness: 0.94, metalness: 0
+  });
+  // GPU에서 천의 정점과 법선을 함께 변형해 CPU 계산과 매 프레임 전송을 줄인다.
+  material.onBeforeCompile = shader => {
+    shader.uniforms.flagTime = time; shader.uniforms.flagPhase = phase;
+    shader.vertexShader = flagDeform + shader.vertexShader;
+    shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>', `
+      vec3 fx = flagPoint(position + vec3(0.002, 0.0, 0.0)) - flagPoint(position - vec3(0.002, 0.0, 0.0));
+      vec3 fy = flagPoint(position + vec3(0.0, 0.002, 0.0)) - flagPoint(position - vec3(0.0, 0.002, 0.0));
+      vec3 objectNormal = normalize(cross(fx, fy));
+    `).replace('#include <begin_vertex>', 'vec3 transformed = flagPoint(position);');
+  };
+  material.customProgramCacheKey = () => 'igloo-cloth-v1';
+  const cloth = new THREE.Mesh(flagGeo, material);
+  cloth.position.set(0.045, 2.7, 0); g.add(cloth);
   ig.group.add(g);
-  flags.push({ cloth, phase: rng() * 6, base: clothGeo.attributes.position.array.slice() });
+  flags.push({ time });
   return g;
 };
 function addLabel(ig, text) {
-  const el = document.createElement('div');
+  const el = ig.label || document.createElement('div');
   el.className = 'label';
   el.textContent = text;
   document.body.appendChild(el);
@@ -533,17 +650,57 @@ places.forEach(({ x, z, yaw }) => {
   group.add(hit);
 
   // gate.visible을 끄면 공개 이글루처럼 입구가 열린다
-  const ig = { group, door, gate, inner, glow, hit, owner: null, mine: false, flag: null, label: null, bottom: new THREE.Vector3(0, -0.1, R + 2.1).applyMatrix4(M) };
+  const ig = { group, door, gate, inner, glow, hit, owner: null, mine: false, flag: null, label: null, labelAnchor: new THREE.Vector3(0, R + 0.18, 0).applyMatrix4(M) };
   igloos.push(ig);
-  const o = OWNERS[idx];
-  if (o) {
-    ig.owner = o[0];
-    lightUp(ig);
-    ig.flag = makeFlag(ig, o[1]);
-    addLabel(ig, o[0]);
-  }
+  if (idx === TEST_IGLOO_INDEX) addLabel(ig, '테스트용');
   idx++;
 });
+// 빛기둥 효과는 보관하되, 현재 활성화된 알림은 없다.
+const projectBeams = [];
+let projectBeamGeometry = null, projectBeamMaterial = null;
+function addProjectBeam(homeIndex) {
+  const home = igloos[homeIndex];
+  if (!home || home.house) return null;
+  if (!projectBeamMaterial) {
+    projectBeamGeometry = new THREE.PlaneGeometry(3.2, 16);
+projectBeamMaterial = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, depthTest: true,
+    side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+    uniforms: { t: uTime },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float t;
+      varying vec2 vUv;
+      void main() {
+        float x = vUv.x - 0.5;
+        float y = vUv.y;
+        float core = exp(-pow(x / (0.055 + y * 0.04), 2.0));
+        float halo = exp(-pow(x / (0.19 + y * 0.17), 2.0) * 3.0);
+        float foot = smoothstep(0.0, 0.035, y);
+        float fade = pow(1.0 - y, 1.65) * (1.0 - smoothstep(0.72, 1.0, y));
+        float breath = 0.9 + 0.1 * sin(t * 1.3);
+        float alpha = (core * 0.24 + halo * 0.19) * foot * fade * breath;
+        vec3 color = mix(vec3(1.7, 1.12, 0.48), vec3(1.35, 1.3, 1.13), smoothstep(0.0, 0.6, y));
+        gl_FragColor = vec4(color, alpha);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }
+    `
+});
+  }
+  const beam = new THREE.Mesh(projectBeamGeometry, projectBeamMaterial);
+  beam.position.set(home.group.position.x, home.group.position.y + R - 0.12 + 8, home.group.position.z);
+  beam.renderOrder = 1;
+  scene.add(beam);
+  projectBeams.push(beam);
+  return beam;
+}
 // 등대는 강사님 집. 탑은 village.js가 그리고, 여기서는 입구와 클릭만 맡는다
 {
   const { x, z, radius } = LIGHTHOUSE;
@@ -595,6 +752,8 @@ function lightUp(ig) {
   ig.glow.visible = true;
 }
 
+// 빈 이글루의 블록만 살짝 벌어진다. 매 프레임에는 집별 강도만 GPU로 전달한다.
+const iceHover = { value: new Float32Array(places.length) };
 {
   const inst = new THREE.InstancedMesh(
     new RoundedBoxGeometry(1, 1, 1, 1, 0.1),
@@ -606,24 +765,78 @@ function lightUp(ig) {
     inst.setMatrixAt(i, b.m);
     inst.setColorAt(i, c.copy(cold).lerp(white, b.c));
   });
+  const homes = new Float32Array(blocks.length * 4);
+  blocks.forEach((b, i) => homes.set([...b.center, b.home], i * 4));
+  inst.geometry.setAttribute('iceHome', new THREE.InstancedBufferAttribute(homes, 4));
+  inst.material.onBeforeCompile = shader => {
+    shader.uniforms.iceHover = iceHover;
+    shader.vertexShader = `
+      attribute vec4 iceHome;
+      uniform float iceHover[${places.length}];
+    ` + shader.vertexShader;
+    shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `
+      #include <begin_vertex>
+      #ifdef USE_INSTANCING
+        vec3 outward = normalize(instanceMatrix[3].xyz - iceHome.xyz);
+        vec3 shift = outward * (0.065 * iceHover[int(iceHome.w)]);
+        // 블록을 통째로 옮겨 모양과 법선을 유지한다.
+        vec3 a = instanceMatrix[0].xyz;
+        vec3 b = instanceMatrix[1].xyz;
+        vec3 c = instanceMatrix[2].xyz;
+        transformed += vec3(dot(shift, a) / dot(a, a), dot(shift, b) / dot(b, b), dot(shift, c) / dot(c, c));
+      #endif
+    `);
+  };
+  inst.material.customProgramCacheKey = () => 'empty-igloo-hover-v1';
   inst.castShadow = true;
   inst.receiveShadow = true;
   scene.add(inst);
 }
 
-const ring = new THREE.Mesh(
-  new THREE.RingGeometry(R * 1.42, R * 1.5, 48),
-  new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, side: THREE.DoubleSide, fog: false })
-);
-ring.rotation.x = -Math.PI / 2;
+// 호버한 건물에만 두 개의 가벼운 파동을 번갈아 표시한다.
+const ring = new THREE.Group();
+const rippleGeo = new THREE.RingGeometry(1, 1.02, 96);
+const rippleBasis = rippleGeo.attributes.position.array.slice();
+for (let i = 0; i < 2; i++) {
+  const ripple = new THREE.Mesh(rippleGeo.clone(), new THREE.MeshBasicMaterial({
+    color: 0xffffff, transparent: true, opacity: 0,
+    side: THREE.DoubleSide, fog: false, depthWrite: false
+  }));
+  ripple.geometry.attributes.position.setUsage(THREE.DynamicDrawUsage);
+  ripple.frustumCulled = false;
+  ring.add(ripple);
+}
+
 ring.visible = false;
 scene.add(ring);
+let rippleStart = 0;
+// 지형 계산은 호버 대상이 바뀔 때만 하고 매 프레임에는 보간만 한다.
+function fitRipples(ig) {
+  const yaw = ig.group.rotation.y, c = Math.cos(yaw), s = Math.sin(yaw);
+  const baseRadius = ig.house ? 3.05 : 2.65;
+  const porch = ig.house ? 1.15 : 0.65;
+  const start = new Float32Array(rippleBasis.length), end = new Float32Array(rippleBasis.length);
+  for (let j = 0; j < rippleBasis.length; j += 3) {
+    const bx = rippleBasis[j], bz = rippleBasis[j + 1], len = Math.hypot(bx, bz);
+    const ux = bx / len, uz = bz / len;
+    const dx = c * ux + s * uz, dz = -s * ux + c * uz;
+    // 입구의 돌출 부분을 피해 가는 가는 선을 바깥쪽으로만 넓힌다.
+    const radius = baseRadius + porch * Math.pow(Math.max(uz, 0), 6) + (len > 1.01 ? 0.04 : 0);
+    for (const [positions, offset] of [[start, 0], [end, 0.32]]) {
+      const x = dx * (radius + offset), z = dz * (radius + offset);
+      positions[j] = x;
+      positions[j + 1] = heightAt(ig.group.position.x + x, ig.group.position.z + z) + 0.16;
+      positions[j + 2] = z;
+    }
+  }
+  for (const ripple of ring.children) ripple.userData = { start, end };
+}
 
 // 마을 소품은 별도 파일. 없어도 장면은 그대로 뜬다
 let village = null;
 import('./village.js')
   .then(m => {
-    village = m.addVillage(scene, { places, hub: HUB, heightAt, rng, lighthouse: LIGHTHOUSE });
+    village = m.addVillage(scene, { places, hub: HUB, heightAt, rng, lighthouse: LIGHTHOUSE, mailPreviewHome: TEST_IGLOO_INDEX });
     renderer.shadowMap.needsUpdate = true;
   })
   .catch(() => {});
@@ -669,31 +882,57 @@ const watchSpeed = () => {
 };
 
 // 인터랙션
-const bar = document.getElementById('bar'), tip = document.getElementById('tip'), count = document.getElementById('count');
-const setBar = (text, buttons = []) => {
+const bar = document.getElementById('bar'), count = document.getElementById('count');
+const uiReducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+let barMotion = null;
+const setBar = (text, buttons = [], kind = buttons.length ? 'actions' : 'notice') => {
+  const previousKind = bar.dataset.kind;
+  if (barMotion) barMotion.cancel();
   bar.textContent = '';
-  const s = document.createElement('span');
-  s.textContent = text;
-  bar.appendChild(s);
-  buttons.forEach(([t, fn, primary]) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = t;
-    if (primary) b.className = 'primary';
-    b.onclick = fn;
-    bar.appendChild(b);
-  });
+  bar.dataset.kind = kind;
+  const message = document.createElement('span');
+  message.className = 'bar-message';
+  message.textContent = text;
+  bar.appendChild(message);
+  if (buttons.length) {
+    const actions = document.createElement('div');
+    actions.className = 'bar-actions';
+    buttons.forEach(([text, action, primary]) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = text;
+      if (primary) button.className = 'primary';
+      button.onclick = action;
+      actions.appendChild(button);
+    });
+    bar.appendChild(actions);
+  }
+  if (kind === 'actions' && previousKind !== 'actions' && !uiReducedMotion.matches) {
+    barMotion = bar.animate([
+      { opacity: 0, transform: 'translate(-50%, 4px)' },
+      { opacity: 1, transform: 'translate(-50%, 0)' }
+    ], { duration: 180, easing: 'cubic-bezier(.16,1,.3,1)' });
+  }
 };
-const IDLE = '스크롤로 확대, 드래그로 이동 · 빈 이글루를 눌러 내 자리를 정해 보세요';
+const IDLE = '스크롤로 확대 · 드래그로 이동';
 const updateCount = () => {
   const homes = igloos.filter(i => !i.house), f = homes.filter(i => i.owner || i.mine).length;
   count.textContent = `깃발 ${f}개 · 빈 이글루 ${homes.length - f}채`;
 };
 updateCount();
-setBar(IDLE);
+setBar(IDLE, [], 'hint');
 
 const ray = new THREE.Raycaster(), pointer = new THREE.Vector2(2, 2), hits = igloos.map(i => i.hit);
 let mode = 'map', hovered = null, mine = null, mx = 0, my = 0, raising = null;
+// 확대하면 자리 선택을 안내하고, 끝까지 축소했을 때 조작 설명으로 돌아간다.
+let choosingHint = false;
+const mapHintText = () => {
+  const zoom = closeness();
+  if (zoom >= 0.3) choosingHint = true;
+  else if (zoom <= 0.001) choosingHint = false;
+  return choosingHint ? mine ? '내 이글루를 눌러 둘러보세요' : '내 자리를 정해 보세요' : IDLE;
+};
+
 
 const pick = () => {
   ray.setFromCamera(pointer, camera);
@@ -718,8 +957,23 @@ const zoomAt = (cx, cy, factor) => {
   view.d = next;
   applyView();
 };
+let scrollReturnTime = -Infinity;
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
+  if (!e.deltaY) return;
+  const now = performance.now();
+  if (mode === 'in') {
+    if (e.deltaY > 0) {
+      leave();
+      scrollReturnTime = now;
+    }
+    return;
+  }
+  // 복귀에 쓴 휠/트랙패드 동작의 나머지 이벤트로 갑자기 확대되지 않게 한다.
+  if (now - scrollReturnTime < 180) {
+    scrollReturnTime = now;
+    return;
+  }
   if (mode === 'map') zoomAt(e.clientX, e.clientY, Math.exp(e.deltaY * 0.0013));
 }, { passive: false });
 
@@ -740,8 +994,11 @@ canvas.addEventListener('pointercancel', release);
 addEventListener('pointermove', e => {
   pointer.set(e.clientX / W() * 2 - 1, -(e.clientY / H()) * 2 + 1);
   mx = pointer.x; my = pointer.y;
-  tip.style.left = e.clientX + 'px';
-  tip.style.top = e.clientY + 'px';
+  if (mode === 'room' && room === lighthouseRoom) {
+    const hoverMap = !mailComposer?.isOpen() && lighthouseRoom.pickAction(pointer) === 'mail';
+    lighthouseRoom.setMapHovered(hoverMap);
+    canvas.style.cursor = hoverMap ? 'pointer' : '';
+  }
   const held = touches.get(e.pointerId);
   if (!held || mode !== 'map') return;
   const dx = e.clientX - held.x, dy = e.clientY - held.y;
@@ -767,18 +1024,21 @@ addEventListener('pointermove', e => {
 canvas.addEventListener('click', e => {
   if (dragged) return;
   pointer.set(e.clientX / W() * 2 - 1, -(e.clientY / H()) * 2 + 1);
+  if (mode === 'room' && room === lighthouseRoom) {
+    if (lighthouseRoom.pickAction(pointer) === 'mail') openLighthouseMail();
+    return;
+  }
   if (mode !== 'map') return;
   const ig = pick();
   if (!ig) return;
   if (ig.owner || ig.mine) return enter(ig);
   if (mine) return setBar('이글루는 한 사람당 하나예요');
   focusOn(ig);
-  setBar('이 이글루를 내 이글루로 정할까요?', [['깃발 꽂기', () => claim(ig), true], ['취소', leave]]);
+  setBar('이 이글루를 선택할까요?', [['깃발 꽂기', () => claim(ig), true], ['취소', leave]]);
 });
 // 입구 정면 눈높이로 카메라를 옮긴다. 다른 이글루에 막히면 입구가 보이는 범위에서만 비켜 선다
 function focusOn(ig) {
   mode = 'in';
-  tip.style.display = 'none';
   ring.visible = false;
   hovered = null;
   canvas.style.cursor = '';
@@ -807,15 +1067,24 @@ function claim(ig) {
   raising = { g: ig.flag, t: 0 };
   addLabel(ig, '내 이글루');
   updateCount();
-  setBar('깃발을 꽂았어요. 이제 이 이글루가 내 공간이에요', [['안으로 들어가기', () => goInside(ig), true], ['마을로 돌아가기', leave]]);
+  setBar('내 이글루로 설정했어요', [['안으로 들어가기', () => goInside(ig), true], ['마을로 돌아가기', leave]]);
 }
 function enter(ig) {
   focusOn(ig);
-  if (ig.house) return setBar('등대 앞이에요. 내부 화면은 다음 단계예요', [['마을로 돌아가기', leave, true]]);
-  setBar(`${ig.mine ? '내' : ig.owner + '의'} 이글루 앞이에요`, [['안으로 들어가기', () => goInside(ig), true], ['마을로 돌아가기', leave]]);
+  if (ig.house) return setBar('등대 입구', [['안으로 들어가기', () => goInside(ig), true], ['마을로 돌아가기', leave]]);
+  setBar(ig.house ? '등대 입구' : `${ig.mine ? '내' : ig.owner + '의'} 이글루 앞이에요`, [['안으로 들어가기', () => goInside(ig), true], ['마을로 돌아가기', leave]]);
 }
 // 이글루 안으로 들어가기. 화면을 잠깐 어둡게 덮은 사이에 장면을 바꾼다
-let room = null;
+let room = null, iglooRoom = null, lighthouseRoom = null;
+let mailComposer = null;
+const openLighthouseMail = () => {
+  if (mode === 'room' && room === lighthouseRoom && mailComposer) mailComposer.open();
+};
+function showRoomActions(ig) {
+  if (ig.house) setBar('등대 안쪽', [['마을에 보내기', openLighthouseMail, true], ['밖으로 나가기', () => goOutside(ig)]]);
+  else setBar(`${ig.mine ? '내' : ig.owner + '의'} 이글루 안이에요`, [['밖으로 나가기', () => goOutside(ig), true]]);
+}
+
 const fade = document.getElementById('fade');
 const fadeThrough = change => {
   fade.style.opacity = 1;
@@ -826,31 +1095,44 @@ const fadeThrough = change => {
 };
 async function goInside(ig) {
   setBar('들어가는 중이에요');
-  if (!room) {
-    room = (await import('./room.js')).createRoom();
-    room.setAspect(W() / H());
+  if (ig.house) {
+    if (!lighthouseRoom) lighthouseRoom = (await import('./lighthouse-room.js')).createLighthouseRoom({ places, hub: HUB, lighthouse: LIGHTHOUSE });
+    if (!mailComposer) mailComposer = (await import('./lighthouse-mail.js')).createLighthouseMail({
+      getHomes: () => igloos.filter(home => !home.house).map((home, id) => ({ ...places[id], id, owner: home.mine ? '나' : home.owner })),
+      hub: HUB, lighthouse: LIGHTHOUSE,
+      onOpen: () => { bar.hidden = true; canvas.style.cursor = ''; lighthouseRoom.setMapHovered(false); },
+      onClose: () => { bar.hidden = false; }
+    });
+    room = lighthouseRoom;
+  } else {
+    if (!iglooRoom) iglooRoom = (await import('./room.js')).createRoom();
+    room = iglooRoom;
   }
-  ig.gate.visible = false;
+  room.setAspect(W() / H());
+  if (ig.gate) ig.gate.visible = false;
   fadeThrough(() => {
     mode = 'room';
     renderPass.scene = room.scene;
     renderPass.camera = room.camera;
-    setBar(`${ig.mine ? '내' : ig.owner + '의'} 이글루 안이에요`, [['밖으로 나가기', () => goOutside(ig), true]]);
+    showRoomActions(ig);
   });
 }
 function goOutside(ig) {
+  mailComposer?.close();
+  lighthouseRoom?.setMapHovered(false);
+  canvas.style.cursor = '';
   fadeThrough(() => {
-    ig.gate.visible = true;
+    if (ig.gate) ig.gate.visible = true;
     renderPass.scene = scene;
     renderPass.camera = camera;
     mode = 'in';
-    setBar(`${ig.mine ? '내' : ig.owner + '의'} 이글루 앞이에요`, [['안으로 들어가기', () => goInside(ig), true], ['마을로 돌아가기', leave]]);
+    setBar(ig.house ? '등대 입구' : `${ig.mine ? '내' : ig.owner + '의'} 이글루 앞이에요`, [['안으로 들어가기', () => goInside(ig), true], ['마을로 돌아가기', leave]]);
   });
 }
 function leave() {
   mode = 'map';
   applyView();
-  setBar(mine ? '깃발이 있는 이글루를 눌러 구경해 보세요' : IDLE);
+  setBar(mapHintText(), [], 'hint');
 }
 addEventListener('keydown', e => { if (e.key === 'Escape' && mode === 'in') leave(); });
 
@@ -861,7 +1143,8 @@ function frame() {
   // 프레임이 낮은 기기에서도 카메라 이동 시간이 늘어지지 않게 상한을 넉넉히 둔다
   const dt = Math.min(clock.getDelta(), 0.25), t = clock.elapsedTime;
   if (mode === 'room') {
-    room.update(t, mx, my);
+    const writingMail = mailComposer?.isOpen();
+    room.update(t, writingMail ? 0 : mx, writingMail ? 0 : my);
     renderer.info.reset();
     composer.render();
     stats.triangles = renderer.info.render.triangles;
@@ -872,16 +1155,13 @@ function frame() {
     return;
   }
   uTime.value = t;
+  // 확대하거나 입구로 이동하면 배경 제목을 차분하게 지운다.
+  const titleOpacity = mode === 'map' ? 0.66 * (1 - smooth(0.22, 0.62, closeness())) : 0;
+  mountainTitle.material.opacity = titleOpacity;
+  mountainTitle.visible = titleOpacity > 0.01;
   if (village) village.update(t);
 
-  flags.forEach(f => {
-    const p = f.cloth.geometry.attributes.position;
-    for (let i = 0; i < p.count; i++) {
-      const x = f.base[i * 3];
-      p.setZ(i, Math.sin(x * 5 - t * 3.2 + f.phase) * 0.09 * x);
-    }
-    p.needsUpdate = true;
-  });
+  flags.forEach(f => { f.time.value = t; });
   if (raising) {
     raising.t = Math.min(raising.t + dt / 0.7, 1);
     raising.g.scale.y = 1 - Math.pow(1 - raising.t, 3);
@@ -894,24 +1174,56 @@ function frame() {
   camera.position.lerp(v.set(camPos.x + px, camPos.y + py, camPos.z), k);
   lookNow.lerp(camLook, k);
   camera.lookAt(lookNow);
+  mountainTitle.position.copy(camera.position).lerp(mountainTitleAnchor, TITLE_DEPTH);
+  projectBeams.forEach(beam => {
+    beam.visible = mode === 'map' || mode === 'in';
+    beam.rotation.y = Math.atan2(camera.position.x - beam.position.x, camera.position.z - beam.position.z);
+  });
 
   if (mode === 'map') {
+    const hint = mapHintText();
+    if (bar.dataset.kind === 'hint' && bar.textContent !== hint) setBar(hint, [], 'hint');
     const ig = pick();
     if (ig !== hovered) {
       hovered = ig;
       ring.visible = !!ig;
+      rippleStart = t;
       canvas.style.cursor = ig ? 'pointer' : '';
-      tip.style.display = ig ? 'block' : 'none';
       if (ig) {
-        ring.position.set(ig.group.position.x, 0.5, ig.group.position.z);
-        tip.textContent = ig.house ? '등대' : ig.mine ? '내 이글루' : ig.owner ? `${ig.owner}의 이글루` : '빈 이글루';
+        ring.position.set(ig.group.position.x, 0, ig.group.position.z);
+        fitRipples(ig);
       }
     }
   }
 
+  igloos.forEach((ig, i) => {
+    if (ig.house) return;
+    const target = mode === 'map' && hovered === ig && !ig.owner && !ig.mine ? 1 : 0;
+    const amount = iceHover.value[i];
+    const next = amount + (target - amount) * (1 - Math.exp(-dt * 8));
+    iceHover.value[i] = Math.abs(next - target) < 0.001 ? target : next;
+  });
+  if (ring.visible) {
+    const duration = 1.8;
+    ring.children.forEach((ripple, i) => {
+      const age = t - rippleStart - i * duration / 2;
+      ripple.visible = age >= 0;
+      if (age < 0) return;
+      const phase = (age % duration) / duration;
+      const spread = 1 - Math.pow(1 - phase, 2);
+      const positions = ripple.geometry.attributes.position;
+      const { start, end } = ripple.userData;
+      for (let j = 0; j < positions.array.length; j++) {
+        positions.array[j] = start[j] + (end[j] - start[j]) * spread;
+      }
+      positions.needsUpdate = true;
+      const fadeIn = Math.min(phase / 0.1, 1);
+      ripple.material.opacity = 0.46 * fadeIn * Math.pow(1 - phase, 1.7);
+    });
+  }
   igloos.forEach(ig => {
     if (!ig.label) return;
-    v.copy(ig.bottom).project(camera);
+    v.copy(ig.labelAnchor).project(camera);
     const show = mode === 'map' && v.z < 1;
     ig.label.style.display = show ? 'block' : 'none';
     if (show) {

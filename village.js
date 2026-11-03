@@ -1,7 +1,8 @@
-﻿import * as THREE from 'three';
+import * as THREE from 'three';
+import { addMailboxes } from './mailboxes.js';
 
 export function addVillage(scene, ctx) {
-  const { places, hub, heightAt, rng, lighthouse } = ctx;
+  const { places, hub, heightAt, rng, lighthouse, mailPreviewHome = null } = ctx;
   const root = new THREE.Group();
   root.name = 'village';
   scene.add(root);
@@ -157,7 +158,7 @@ export function addVillage(scene, ctx) {
     }
     return result;
   }
-  function drawRoad(points, width, fade = false) {
+  function drawRoad(points, width, fade = false, doorway = null) {
     if (points.length < 2) return null;
     const dense = [points[0]], lengths = [0];
     for (let i = 1; i < points.length; i++) {
@@ -168,13 +169,21 @@ export function addVillage(scene, ctx) {
     roads.push(road); ink.lineCap = ink.lineJoin = 'round'; ink.strokeStyle = '#fff';
     for (let i = 1; i < dense.length; i++) {
       const taper = fade ? THREE.MathUtils.smoothstep(total - lengths[i], 0, Math.min(7, total * 0.4)) : 1;
-      ink.globalAlpha = taper; ink.lineWidth = Math.max(0.01, width * 2048 / 140 * taper);
+      // 문턱 근처만 통로 폭에 맞춰 부드럽게 넓힌다.
+      const approach = doorway ? 1 - THREE.MathUtils.smoothstep(dist(dense[i].x, dense[i].z, doorway.x, doorway.z), 0, 1.1) : 0;
+      const localWidth = width + (1.02 - width) * approach;
+      ink.globalAlpha = taper; ink.lineWidth = Math.max(0.01, localWidth * 2048 / 140 * taper);
       ink.beginPath(); ink.moveTo(px(dense[i - 1].x), pz(dense[i - 1].z)); ink.lineTo(px(dense[i].x), pz(dense[i].z)); ink.stroke();
     }
     ink.globalAlpha = 1; return road;
   }
   const ring = [];
-  for (let i = 0; i <= 160; i++) { const a = i / 160 * TAU; ring.push({ x: hub.x + Math.cos(a) * 7, z: hub.z + Math.sin(a) * 5.6 }); }
+  // 호수 둘레는 작은 굴곡만 섞고 시작점과 끝점을 정확히 이어준다.
+  const pondLoopPoint = a => {
+    const wobble = 1 + 0.025 * Math.sin(a * 3 + 0.6) + 0.012 * Math.sin(a * 5 - 0.8);
+    return { x: hub.x + Math.cos(a) * 7 * wobble, z: hub.z + Math.sin(a) * 5.6 * wobble };
+  };
+  for (let i = 0; i <= 160; i++) ring.push(pondLoopPoint(i / 160 * TAU));
   drawRoad(ring, 1.1);
   for (const controls of [
     [[0, -5.6], [-3, -14], [2, -25], [-2, -43]],
@@ -182,7 +191,7 @@ export function addVillage(scene, ctx) {
     [[7, 0], [17, -3], [28, -9], [51, -7]],
     [[0, 5.6], [3, 14], [-2, 23], [1, 31]]
   ]) {
-    const points = [{ x: hub.x + controls[0][0], z: hub.z + controls[0][1] }];
+    const points = [pondLoopPoint(Math.atan2(controls[0][1] / 5.6, controls[0][0] / 7))];
     for (let i = 1; i < controls.length; i++) {
       const start = points[points.length - 1], goal = { x: hub.x + controls[i][0], z: hub.z + controls[i][1] };
       let end = start;
@@ -211,7 +220,15 @@ export function addVillage(scene, ctx) {
   while (pending.length) {
     pending.sort((a, b) => nearest(a).best - nearest(b).best);
     const p = pending.shift(), { target } = nearest(p);
-    if (target) drawRoad(rounded(route({ x: p.doorX, z: p.doorZ }, target, p), p), 0.55);
+    if (target) {
+      const branch = rounded(route({ x: p.doorX, z: p.doorZ }, target, p), p);
+      if (branch.length < 2) continue;
+      // doorX/Z는 문보다 약 1m 앞의 탐색 지점. 실제 문턱까지 직선으로 이어준다.
+      const forward = { x: Math.sin(p.yaw), z: Math.cos(p.yaw) };
+      const threshold = { x: p.x + forward.x * (p.radius * 0.92 + 1.13), z: p.z + forward.z * (p.radius * 0.92 + 1.13) };
+      const landing = { x: p.x + forward.x * (p.radius + 1.45), z: p.z + forward.z * (p.radius + 1.45) };
+      drawRoad([threshold, landing, ...branch], 0.55, false, threshold);
+    }
   }
   const softened = document.createElement('canvas'); softened.width = softened.height = 2048;
   const soft = softened.getContext('2d');
@@ -432,6 +449,7 @@ export function addVillage(scene, ctx) {
     instance(cone, snow, x, y + 2.39, z, 0.28, 0.15, 0.28);
     drift(x, z, 0.36);
   }
+  addMailboxes(scene, { places, heightAt, previewHomeIndex: mailPreviewHome });
   for (const [geometry, byMaterial] of batches) for (const [material, matrices] of byMaterial) {
     const mesh = new THREE.InstancedMesh(geometry, material, matrices.length);
     for (let i = 0; i < matrices.length; i++) mesh.setMatrixAt(i, matrices[i]);
