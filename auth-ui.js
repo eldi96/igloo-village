@@ -17,6 +17,7 @@ const STYLE = `
   .auth-card label { display: block; margin-bottom: 10px; color: #b5c4cf; font-size: 12px; }
   .auth-card input { display: block; box-sizing: border-box; width: 100%; height: 42px; margin-top: 5px; padding: 0 12px; border: 1px solid rgba(232,242,249,.18); border-radius: 9px; background: rgba(233,243,250,.06); color: #f2f7fa; font: inherit; font-size: 14px; }
   .auth-card input:focus { outline: 2px solid #edf6ff; outline-offset: 1px; }
+  .auth-card .auth-hint { display: block; margin-top: 5px; color: #dbe5ec; font-size: 12px; }
   .auth-card form .auth-actions { margin-top: 16px; }
   .auth-note { margin-top: 2px !important; font-size: 12px; }
   .auth-error { margin-top: 12px !important; color: #ffb4a8 !important; font-size: 13px; }
@@ -74,12 +75,18 @@ export function mountAuth(backend, { onChange = () => {} } = {}) {
     if (/[가-힣]/.test(text)) return text;
     return ERRORS.find(([pattern]) => pattern.test(text))?.[1] || '처리하지 못했어요. 잠시 후 다시 시도해 주세요.';
   };
-  const field = (label, name, attrs = {}) => {
+  const field = (label, name, attrs = {}, hint = '') => {
     const wrap = document.createElement('label');
     wrap.textContent = label;
     const input = document.createElement('input');
     Object.assign(input, { name, required: true, ...attrs });
     wrap.appendChild(input);
+    if (hint) {
+      const small = document.createElement('small');
+      small.className = 'auth-hint';
+      small.textContent = hint;
+      wrap.appendChild(small);
+    }
     return wrap;
   };
   // 입력 칸이 있는 창. onSubmit이 끝나면 창을 닫고, 실패하면 안내만 보여준다.
@@ -129,10 +136,10 @@ export function mountAuth(backend, { onChange = () => {} } = {}) {
     ], '로그인', data => backend.signIn(data.get('id'), data.get('password')), [button('처음이에요', openSignUp), button('둘러보기', close)]);
   }
   function openSignUp() {
-    showForm('이글루 마을 가입', '강의실에서 받은 초대 코드가 필요해요. 다른 사이트에서 쓰는 비밀번호는 쓰지 마세요.', [
+    showForm('이글루 마을 가입', '강의실에서 받은 초대 코드가 필요해요.', [
       field('이름 (마을에 표시돼요)', 'name', { autocomplete: 'nickname', maxLength: 40 }),
       field('아이디 (영문 소문자, 숫자, _ 3~20자)', 'id', { autocomplete: 'username', autocapitalize: 'none', spellcheck: false, pattern: '[a-z0-9_]{3,20}' }),
-      field('비밀번호 (8자 이상)', 'password', { type: 'password', autocomplete: 'new-password', minLength: 8 }),
+      field('비밀번호 (8자 이상)', 'password', { type: 'password', autocomplete: 'new-password', minLength: 8 }, '평소 쓰는 비밀번호는 쓰지 말고, 여기서만 쓸 비밀번호를 새로 정해 주세요.'),
       field('초대 코드', 'code', { autocomplete: 'off', autocapitalize: 'characters' })
     ], '가입하기', data => backend.signUp({ id: data.get('id'), password: data.get('password'), displayName: data.get('name'), code: data.get('code') }), [button('이미 계정이 있어요', openLogin)]);
   }
