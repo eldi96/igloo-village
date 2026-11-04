@@ -2,7 +2,7 @@ import { supabaseConfig } from './config.js';
 
 // 마을의 3D 화면과 분리한 데이터 연결부. 권한은 DB의 RLS에서 검사한다.
 const SDK_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-const HOME_COLUMNS = 'id,owner_id,is_public,claimed_at';
+const HOME_COLUMNS = 'id,owner_id,is_public,claimed_at,latest_project_at';
 const PROJECT_COLUMNS = 'id,igloo_id,owner_id,title,description,url,created_at';
 const MAIL_COLUMNS = 'id,sender_id,recipient_id,body,link,created_at,read_at';
 const CHAT_COLUMNS = 'id,sender_id,body,created_at';

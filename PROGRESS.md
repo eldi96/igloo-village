@@ -138,10 +138,9 @@ Three.js r160 기반의 정적 사이트이고, DB와 로그인은 Supabase, 배
 - 등대 아래 왼쪽 끝 이글루를 `TEST_IGLOO_INDEX = 21`로 지정하고 `테스트용` 이름표만 붙였다.
   - 주인이 지정된 상태가 아니므로 빈 이글루다.
 - 새 프로젝트 알림용 샴페인 골드 빛기둥을 만들고 한 채·네 채 표시를 시험했다.
-- 현재 켜진 빛기둥은 없다. `index.html`의 `addProjectBeam(homeIndex)` 함수에 효과를 보관했다.
-- 이 효과는 향후 **새 프로젝트가 실제 등록됐을 때만** 표시해야 한다.
+- 빛기둥은 **새 프로젝트가 실제 등록됐을 때만** 30분 동안 켜진다. DB의 `igloos.latest_project_at`을 기준으로 하며, 다른 사람 화면에도 새로고침 없이 나타난다.
   - 이글루 클릭이나 깃발 선점에 연결하지 않는다.
-  - 표시 기간·확인 후 제거 조건·DB 등록 시간 연동은 아직 없다.
+  - 지금은 비공개 이글루에도 켜진다. 공개/비공개를 만들 때 공개 이글루로 제한할지 정해야 한다.
 
 ### 우편함
 
@@ -195,7 +194,7 @@ Three.js r160 기반의 정적 사이트이고, DB와 로그인은 Supabase, 배
 - `chat_messages`: 대화. `private.chat_members`에 지정된 계정만 읽고 쓰며, 한 사람당 1초에 한 번만 보낼 수 있다.
 - Realtime 게시 대상: `igloos`, `mail_messages`, `chat_messages`.
 - `private.invite_codes`, `check_invite`, `join_with_invite`: 초대 코드 확인과 수강생 승인. 유효한 코드가 2개 있다.
-- 원격 적용 이력: `initial_igloo_village_backend`, `consolidate_igloo_update_policy`, `add_invite_code_signup`, `add_village_chat`, `restrict_chat_to_team`.
+- 원격 적용 이력: `initial_igloo_village_backend`, `consolidate_igloo_update_policy`, `add_invite_code_signup`, `add_village_chat`, `restrict_chat_to_team`, `add_igloo_latest_project_time`.
 
 ### 접근 권한
 

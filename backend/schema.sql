@@ -38,6 +38,7 @@ create table public.igloos (
   owner_id uuid unique references public.members(id),
   is_public boolean not null default false,
   claimed_at timestamptz,
+  latest_project_at timestamptz,
   check ((owner_id is null and claimed_at is null) or (owner_id is not null and claimed_at is not null))
 );
 insert into public.igloos(id) select generate_series(0, 30);
@@ -96,6 +97,21 @@ create policy projects_update on public.projects for update to authenticated
   with check (owner_id = (select auth.uid()) and (select private.is_student()));
 create policy projects_delete on public.projects for delete to authenticated
   using (owner_id = (select auth.uid()) and (select private.is_student()));
+
+-- 빛기둥용 마지막 프로젝트 등록 시간. 내용은 드러나지 않고, 사용자가 직접 고칠 수 없다.
+create function private.sync_igloo_project_time() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare home smallint := coalesce(new.igloo_id, old.igloo_id);
+begin
+  update public.igloos set latest_project_at = (
+    select max(p.created_at) from public.projects p where p.igloo_id = home
+  ) where id = home;
+  return null;
+end;
+$$;
+revoke all on function private.sync_igloo_project_time() from public, anon, authenticated;
+create trigger projects_sync_igloo_time after insert or delete on public.projects
+  for each row execute function private.sync_igloo_project_time();
 
 create table public.mail_messages (
   id uuid primary key default gen_random_uuid(),

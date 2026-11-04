@@ -685,7 +685,8 @@ places.forEach(({ x, z, yaw }) => {
   if (idx === TEST_IGLOO_INDEX) addLabel(ig, '테스트용');
   idx++;
 });
-// 빛기둥 효과는 보관하되, 현재 활성화된 알림은 없다.
+// 새 프로젝트가 등록된 이글루에 일정 시간 빛기둥을 세운다.
+const BEAM_MS = 30 * 60 * 1000;
 const projectBeams = [];
 let projectBeamGeometry = null, projectBeamMaterial = null;
 function addProjectBeam(homeIndex) {
@@ -727,10 +728,27 @@ projectBeamMaterial = new THREE.ShaderMaterial({
   const beam = new THREE.Mesh(projectBeamGeometry, projectBeamMaterial);
   beam.position.set(home.group.position.x, home.group.position.y + R - 0.12 + 8, home.group.position.z);
   beam.renderOrder = 1;
+  beam.userData.home = homeIndex;
   scene.add(beam);
   projectBeams.push(beam);
   return beam;
 }
+// 등록한 지 BEAM_MS가 지나지 않은 이글루에만 빛기둥을 남긴다. 등록 시간은 DB가 기록한다.
+const latestProjectAt = new Map();
+function updateProjectBeams() {
+  const now = Date.now();
+  const wanted = new Set();
+  latestProjectAt.forEach((at, home) => { if (now - at < BEAM_MS) wanted.add(home); });
+  for (let i = projectBeams.length - 1; i >= 0; i--) {
+    const beam = projectBeams[i];
+    if (wanted.delete(beam.userData.home)) continue;
+    scene.remove(beam);
+    projectBeams.splice(i, 1);
+  }
+  wanted.forEach(addProjectBeam);
+}
+// 아무 변화가 없어도 시간이 지나면 꺼지게 한다.
+setInterval(updateProjectBeams, 60000);
 // 등대는 강사님 집. 탑은 village.js가 그리고, 여기서는 입구와 클릭만 맡는다
 {
   const { x, z, radius } = LIGHTHOUSE;
@@ -1203,9 +1221,11 @@ async function syncVillage(raiseHome = null) {
     const names = approved ? await villageBackend.getMemberNames() : [];
     const nameOf = new Map(names.map(m => [m.id, m.display_name]));
     mine = null;
-    for (const { id, owner_id: ownerId } of homes) {
+    latestProjectAt.clear();
+    for (const { id, owner_id: ownerId, latest_project_at: latest } of homes) {
       const ig = igloos[id];
       if (!ownerId) continue;
+      if (latest) latestProjectAt.set(id, new Date(latest).getTime());
       ig.mine = ownerId === auth.user?.id;
       if (ig.mine) mine = ig;
       ig.owner = ig.mine ? null : nameOf.get(ownerId) || '수강생';
@@ -1227,6 +1247,7 @@ async function syncVillage(raiseHome = null) {
     }
     igloos.forEach(ig => { if (!ig.house && !homes.find(h => h.id === ig.home)?.owner_id) ig.mine = false; });
     updateCount();
+    updateProjectBeams();
     chat.setAccess({ user: auth.user, member: auth.member });
   })();
   try {
