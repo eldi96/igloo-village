@@ -11,15 +11,26 @@
 
 `main`은 합치는 즉시 https://igloo-village.vercel.app/ 에 배포됩니다. `main`에 바로 올리지 않습니다.
 
+각자 자기 이름의 브랜치 하나에서 작업합니다. 다른 사람의 브랜치에는 커밋하지 않습니다.
+
+GitHub Desktop 기준:
+
+1. **Current Branch**에서 자기 브랜치를 고릅니다.
+2. **Fetch origin**을 누른 뒤 **Branch → Update from main**으로 최신 `main`을 받습니다.
+3. 작업하고 커밋한 뒤 **Push origin**을 누릅니다.
+4. **Preview Pull Request → Create Pull Request**로 `main`에 PR을 엽니다.
+5. 다른 사람이 화면을 확인한 뒤 합칩니다.
+6. 합쳐진 뒤 다음 작업을 시작하기 전에 2번을 다시 합니다.
+
+명령어로 할 때 2번은 다음과 같습니다.
+
 ```sh
-git switch main
-git pull
-git switch -c feature/작업이름
+git switch 내브랜치
+git fetch origin
+git merge origin/main
 ```
 
-작업 후 브랜치를 푸시하고 `main`으로 PR을 엽니다. 다른 사람이 화면을 확인한 뒤 합칩니다.
-
-- PR 하나에는 기능 하나만 담습니다.
+- PR 하나에는 기능 하나만 담습니다. 합쳐지기 전에는 다음 기능을 같은 브랜치에 커밋하지 않습니다.
 - 합치기 전에 `node --test backend/client.test.mjs quality.test.mjs`를 실행합니다.
 - 화면을 바꿨다면 로컬에서 직접 확인하고, 확인한 내용과 못 한 내용을 PR에 적습니다.
 - 기능의 상태가 바뀌면 `PROGRESS.md`도 함께 고칩니다.
