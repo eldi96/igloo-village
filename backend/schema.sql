@@ -194,4 +194,50 @@ end;
 $$;
 revoke all on function public.join_with_invite(text, text) from public, anon;
 grant execute on function public.join_with_invite(text, text) to authenticated;
+
+-- 마을 대화. 이글루 입주자와 강사만 읽고 쓴다.
+create function private.can_chat() returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from public.members m
+    where m.id = (select auth.uid()) and m.approved and (
+      m.role = 'instructor' or exists (select 1 from public.igloos i where i.owner_id = m.id)
+    )
+  );
+$$;
+revoke all on function private.can_chat() from public, anon;
+grant execute on function private.can_chat() to authenticated;
+
+create table public.chat_messages (
+  id uuid primary key default gen_random_uuid(),
+  sender_id uuid not null default auth.uid() references public.members(id) on delete cascade,
+  body text not null check (char_length(body) between 1 and 500 and btrim(body) <> ''),
+  created_at timestamptz not null default now()
+);
+create index chat_messages_time on public.chat_messages(created_at desc);
+create index chat_messages_sender on public.chat_messages(sender_id, created_at desc);
+alter table public.chat_messages enable row level security;
+revoke all on public.chat_messages from public, anon, authenticated;
+grant select, delete on public.chat_messages to authenticated;
+grant insert(body) on public.chat_messages to authenticated;
+create policy chat_read on public.chat_messages for select to authenticated
+  using ((select private.can_chat()));
+create policy chat_send on public.chat_messages for insert to authenticated
+  with check (sender_id = (select auth.uid()) and (select private.can_chat()));
+create policy chat_delete_own on public.chat_messages for delete to authenticated
+  using (sender_id = (select auth.uid()));
+
+-- 도배 방지: 한 사람은 1초에 한 번만 보낼 수 있다.
+create function private.chat_rate_limit() returns trigger language plpgsql security invoker set search_path = '' as $$
+begin
+  if exists (select 1 from public.chat_messages m where m.sender_id = new.sender_id and m.created_at > now() - interval '1 second') then
+    raise exception '너무 빨리 보내고 있어요. 잠시 후 다시 보내주세요.';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function private.chat_rate_limit() from public, anon, authenticated;
+create trigger chat_rate_limit before insert on public.chat_messages
+  for each row execute function private.chat_rate_limit();
+
+alter publication supabase_realtime add table public.chat_messages;
 commit;

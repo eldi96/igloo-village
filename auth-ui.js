@@ -149,6 +149,12 @@ export function mountAuth(backend, { onChange = () => {} } = {}) {
       field('초대 코드', 'code', { autocomplete: 'off', autocapitalize: 'characters' })
     ], '확인', data => backend.joinWithInvite(data.get('code'), data.get('name')), [button('둘러보기', close), button('로그아웃', signOut)]);
   }
+  function openRename(event) {
+    if (event?.currentTarget) opener = event.currentTarget;
+    showForm('내 이름 바꾸기', '마을에서 이글루 위에 보이는 이름이에요.', [
+      field('이름', 'name', { autocomplete: 'nickname', maxLength: 40, value: member?.display_name || '' })
+    ], '저장', data => backend.updateDisplayName(data.get('name')), [button('취소', close)]);
+  }
   async function signOut() {
     close();
     try { await backend.signOut(); } catch (e) { console.warn('로그아웃에 실패했어요:', e.message); }
@@ -187,5 +193,5 @@ export function mountAuth(backend, { onChange = () => {} } = {}) {
     renderChip();
   });
 
-  return { open: openLogin, openJoin: openPending, get user() { return user; }, get member() { return member; } };
+  return { open: openLogin, openJoin: openPending, openRename, get user() { return user; }, get member() { return member; } };
 }

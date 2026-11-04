@@ -45,12 +45,14 @@
 import * as THREE from 'three';
 import { villageBackend } from './backend/client.js';
 import { mountAuth } from './auth-ui.js';
+import { mountChat } from './chat-ui.js';
 
 // DB 연결로 화면 렌더링을 기다리게 하지 않는다. 조작의 저장 연동은 로그인 UI 연결 후 진행한다.
 window.__iglooBackendStatus = villageBackend.status;
 villageBackend.onStatusChange(status => { document.documentElement.dataset.supabase = status.phase; });
 villageBackend.connect().catch(error => { console.warn('Supabase 연결을 확인해주세요:', error.message); });
 const auth = mountAuth(villageBackend, { onChange: () => syncVillage() });
+const chat = mountChat(villageBackend);
 
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -1218,6 +1220,7 @@ async function syncVillage(raiseHome = null) {
     }
     igloos.forEach(ig => { if (!ig.house && !homes.find(h => h.id === ig.home)?.owner_id) ig.mine = false; });
     updateCount();
+    chat.setAccess({ user: auth.user, member: auth.member, hasHome: Boolean(mine) });
   })();
   try {
     await syncing;
@@ -1245,7 +1248,8 @@ const openLighthouseMail = () => {
 };
 function showRoomActions(ig) {
   if (ig.house) setBar('등대 안쪽', [['마을에 보내기', openLighthouseMail, true], ['밖으로 나가기', () => goOutside(ig)]]);
-  else setBar(`${ig.mine ? '내' : ig.owner + '의'} 이글루 안이에요`, [['밖으로 나가기', () => goOutside(ig), true]]);
+  else if (ig.mine) setBar('내 이글루 안이에요', [['밖으로 나가기', () => goOutside(ig), true], ['이름 바꾸기', e => auth.openRename(e)]]);
+  else setBar(`${ig.owner}의 이글루 안이에요`, [['밖으로 나가기', () => goOutside(ig), true]]);
 }
 
 const fade = document.getElementById('fade');
@@ -1276,6 +1280,7 @@ async function goInside(ig) {
   if (ig.gate) ig.gate.visible = false;
   fadeThrough(() => {
     mode = 'room';
+    chat.setHidden(true);
     if (room === iglooRoom) room.show();
     else {
       renderPass.scene = room.scene;
@@ -1294,6 +1299,7 @@ function goOutside(ig) {
     renderPass.scene = scene;
     renderPass.camera = camera;
     mode = 'in';
+    chat.setHidden(false);
     setBar(ig.house ? '등대 입구' : `${ig.mine ? '내' : ig.owner + '의'} 이글루 앞이에요`, [['안으로 들어가기', () => goInside(ig), true], ['마을로 돌아가기', leave]]);
   });
 }

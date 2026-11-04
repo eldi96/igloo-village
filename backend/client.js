@@ -5,6 +5,7 @@ const SDK_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm
 const HOME_COLUMNS = 'id,owner_id,is_public,claimed_at';
 const PROJECT_COLUMNS = 'id,igloo_id,owner_id,title,description,url,created_at';
 const MAIL_COLUMNS = 'id,sender_id,recipient_id,body,link,created_at,read_at';
+const CHAT_COLUMNS = 'id,sender_id,body,created_at';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Supabase 로그인은 이메일 형식을 요구한다. 아이디를 메일이 오가지 않는 주소로 바꿔 쓴다.
@@ -123,6 +124,12 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
       const api = await ready();
       return unwrap(await api.from('members').select('id,display_name'));
     },
+    async updateDisplayName(displayName) {
+      const name = String(displayName ?? '').trim();
+      if (name.length < 1 || name.length > 40) throw new Error('이름은 1~40자로 입력해주세요.');
+      const { api, member } = await requireMember();
+      return unwrap(await api.from('members').update({ display_name: name }).eq('id', member.id).select('id,display_name,role,approved').single());
+    },
     async claimIgloo(id) {
       homeId(id); const { api } = await requireMember('student');
       return unwrap(await api.rpc('claim_igloo', { p_igloo_id: id }));
@@ -161,6 +168,31 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
     async subscribeMap(callback) {
       const api = await ready();
       const channel = api.channel('igloo-village-map').on('postgres_changes', { event: '*', schema: 'public', table: 'igloos' }, callback).subscribe();
+      return () => api.removeChannel(channel);
+    },
+    // 마을 대화. 읽고 쓰는 권한은 입주자와 강사로 DB에서 제한한다.
+    async getChat(limit = 100) {
+      const api = await ready();
+      return unwrap(await api.from('chat_messages').select(CHAT_COLUMNS).order('created_at', { ascending: false }).limit(limit)).reverse();
+    },
+    async sendChat(body) {
+      const text = String(body ?? '').trim();
+      if (text.length < 1 || text.length > 500) throw new Error('메시지는 1~500자로 입력해주세요.');
+      const api = await ready();
+      return unwrap(await api.from('chat_messages').insert({ body: text }).select(CHAT_COLUMNS).single());
+    },
+    async deleteChat(id) {
+      if (!UUID.test(id)) throw new Error('존재하지 않는 메시지입니다.');
+      const api = await ready();
+      const { error } = await api.from('chat_messages').delete().eq('id', id);
+      if (error) throw error;
+    },
+    // onStatus로 연결 상태를 알려 재연결 때 놓친 메시지를 다시 읽게 한다.
+    async subscribeChat(callback, onStatus = () => {}) {
+      const api = await ready();
+      const channel = api.channel('igloo-village-chat')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_messages' }, callback)
+        .subscribe(onStatus);
       return () => api.removeChannel(channel);
     },
     async subscribeInbox(callback) {

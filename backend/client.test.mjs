@@ -63,5 +63,10 @@ test('invalid home IDs and unsafe links fail before connection or mutation', asy
   await assert.rejects(backend.claimIgloo(31), /존재하지/);
   await assert.rejects(backend.addProject(0, { title: 'test', url: 'javascript:alert(1)' }), /http/);
   await assert.rejects(backend.sendMail(['not-a-user'], { body: 'test' }), /수강생/);
+  await assert.rejects(backend.updateDisplayName('   '), /이름/);
+  await assert.rejects(backend.updateDisplayName('가'.repeat(41)), /이름/);
+  await assert.rejects(backend.sendChat('   '), /메시지/);
+  await assert.rejects(backend.sendChat('가'.repeat(501)), /메시지/);
+  await assert.rejects(backend.deleteChat('not-a-message'), /메시지/);
   assert.equal(loaded, false);
 });
