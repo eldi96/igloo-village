@@ -4,14 +4,24 @@ const ROOM_IMAGE = './assets/igloo-room.png';
 
 // 16:9를 기준으로 화면을 채운다. 더 좁은 화면에서는 등불(왼쪽 5.9%)과 화덕(오른쪽 98.6%)이
 // 들어오는 폭(가로 4~99.5%)에서 확대를 멈추고, 남는 위아래는 이미지 가장자리 색으로 채운다.
+// 16:9보다 넓은 창에서는 위아래가 덜 잘리도록 이미지를 가로 88%까지 줄이고, 좌우는 가장자리 색을 늘려 잇는다.
 // WebGL을 거치면 블룸과 톤매핑으로 색이 바뀌므로 이미지는 캔버스 위에 그대로 올린다.
 const STYLE = `
   .igloo-room { --w: min(max(100vw, 100vh * 16 / 9), 100vw / .955); position: fixed; inset: 0; overflow: hidden; background: #8fb8e2; pointer-events: none; }
   .igloo-room[hidden] { display: none; }
   .igloo-room-stage { position: absolute; width: var(--w); aspect-ratio: 16 / 9; left: clamp(100vw - var(--w), 50vw - var(--w) * .5175, 0px); top: calc((100% - var(--w) * 9 / 16) * .62); }
-  .igloo-room-stage img { display: block; width: 100%; height: 100%; }
+  .igloo-room-stage img { position: relative; display: block; width: 100%; height: 100%; }
+  .igloo-room-side { position: absolute; inset: 0 auto auto auto; display: none; width: 12%; height: 100%; }
+  .igloo-room-side[data-side="left"] { left: -9%; }
+  .igloo-room-side[data-side="right"] { left: 97%; }
   @media (max-aspect-ratio: 17 / 10) {
     .igloo-room-stage img { -webkit-mask-image: linear-gradient(transparent, #000 6%, #000 94%, transparent); mask-image: linear-gradient(transparent, #000 6%, #000 94%, transparent); }
+  }
+  @media (min-aspect-ratio: 16 / 9) {
+    .igloo-room { --w: max(100vh * 16 / 9, 100vw * .88); }
+    .igloo-room-stage { left: calc(50vw - var(--w) / 2); }
+    .igloo-room-stage img { -webkit-mask-image: linear-gradient(90deg, transparent, #000 3%, #000 98.8%, transparent); mask-image: linear-gradient(90deg, transparent, #000 3%, #000 98.8%, transparent); }
+    .igloo-room-side { display: block; }
   }
 `;
 
@@ -27,6 +37,12 @@ function edgeColor(img, y) {
   return `rgb(${sum.map(v => Math.round(v / 64)).join(',')})`;
 }
 
+// 왼쪽이나 오른쪽 가장자리 몇 줄을 세로 띠로 줄인다. 늘려도 높이별 색이 이미지와 이어진다.
+function paintSide(side, img, sx) {
+  const g = side.getContext('2d');
+  g.drawImage(img, sx, 0, 8, img.naturalHeight, 0, 0, side.width, side.height);
+}
+
 export function createRoom(canvas) {
   const style = document.createElement('style');
   style.textContent = STYLE;
@@ -40,13 +56,23 @@ export function createRoom(canvas) {
   const img = new Image();
   img.alt = '';
   img.src = ROOM_IMAGE;
-  stage.appendChild(img);
+  const [left, right] = ['left', 'right'].map(name => {
+    const side = document.createElement('canvas');
+    side.className = 'igloo-room-side';
+    side.dataset.side = name;
+    side.width = 1;
+    side.height = 12;
+    return side;
+  });
+  stage.append(left, right, img);
   el.appendChild(stage);
   canvas.after(el);
 
   // 이미지가 준비된 뒤 들어가 화면이 비어 보이지 않게 한다. 실패해도 들어갈 수는 있다.
   const ready = img.decode().then(() => {
     el.style.background = `linear-gradient(${edgeColor(img, 2)} 50%, ${edgeColor(img, img.naturalHeight - 3)} 50%)`;
+    paintSide(left, img, 0);
+    paintSide(right, img, img.naturalWidth - 8);
   }).catch(e => console.warn('이글루 내부 이미지를 불러오지 못했어요:', e.message));
 
   return {
