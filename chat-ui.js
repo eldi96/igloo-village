@@ -108,7 +108,7 @@ export function mountChat(backend) {
     <div class="chat-empty"></div>
     <button type="button" class="chat-new" hidden>새 메시지</button>
     <p class="chat-note" role="alert"></p>
-    <form class="chat-form" hidden><textarea class="chat-input" rows="1" maxlength="500" placeholder="메시지 보내기" aria-label="메시지"></textarea><button type="submit" class="chat-send" disabled>보내기</button></form>
+    <form class="chat-form"><textarea class="chat-input" rows="1" maxlength="500" placeholder="메시지 보내기" aria-label="메시지"></textarea><button type="submit" class="chat-send" disabled>보내기</button></form>
   `;
   document.body.append(toggle, panel);
 
@@ -118,7 +118,7 @@ export function mountChat(backend) {
 
   const messages = new Map();
   let names = new Map();
-  let me = null, canChat = false, approved = false, started = false, hiddenByScene = false;
+  let me = null, canChat = false, started = false, hiddenByScene = false, accessKey = null, accessCheck = 0;
   let open = false, unread = 0, unsubscribe = null, sending = false, session = 0, refreshingNames = false;
 
   const nearBottom = () => list.scrollHeight - list.scrollTop - list.clientHeight < NEAR_BOTTOM;
@@ -184,7 +184,7 @@ export function mountChat(backend) {
     const hasMessages = sorted.length > 0;
     list.hidden = !hasMessages;
     empty.hidden = hasMessages;
-    if (!hasMessages) empty.textContent = canChat ? '아직 대화가 없어요. 먼저 인사해 보세요.' : '이글루를 정하면 대화에 참여할 수 있어요.';
+    if (!hasMessages) empty.textContent = '아직 대화가 없어요. 먼저 인사해 보세요.';
     if (stick) toBottom();
   }
   function trim() {
@@ -198,7 +198,7 @@ export function mountChat(backend) {
     toggle.setAttribute('aria-label', unread ? `대화 창 열기, 새 메시지 ${unread}개` : '대화 창 열기');
   }
   function syncVisibility() {
-    const showable = approved && !hiddenByScene;
+    const showable = canChat && !hiddenByScene;
     toggle.hidden = !showable || open;
     panel.dataset.open = String(showable && open);
     panel.inert = !(showable && open);
@@ -214,7 +214,7 @@ export function mountChat(backend) {
     syncVisibility();
     if (open) {
       toBottom();
-      if (focus && canChat) input.focus({ preventScroll: true });
+      if (focus) input.focus({ preventScroll: true });
     } else if (focus) toggle.focus({ preventScroll: true });
   }
   async function refreshNames() {
@@ -365,22 +365,28 @@ export function mountChat(backend) {
   syncVisibility();
 
   return {
-    // 로그인 상태나 입주 상태가 바뀔 때마다 호출한다.
-    setAccess({ user = null, member = null, hasHome = false } = {}) {
+    // 로그인 상태가 바뀔 때마다 호출한다. 대화 권한은 DB에 묻고, 지정된 계정이 아니면 창을 보여주지 않는다.
+    async setAccess({ user = null, member = null } = {}) {
       const nextMe = user?.id || null;
-      const nextApproved = Boolean(member?.approved);
-      const nextCan = nextApproved && (hasHome || member.role === 'instructor');
-      const changedUser = nextMe !== me;
-      if (changedUser && started) stop();
-      me = nextMe;
-      approved = nextApproved;
-      if (nextCan !== canChat) {
-        canChat = nextCan;
-        form.hidden = !canChat;
-        if (!canChat && started) stop();
+      const key = member?.approved ? nextMe : null;
+      if (key === accessKey) return;
+      accessKey = key;
+      const check = ++accessCheck;
+      let allowed = false;
+      if (key) {
+        try {
+          allowed = await backend.canUseChat();
+        } catch (e) {
+          // 다음 지도 갱신 때 다시 묻는다.
+          accessKey = null;
+          console.warn('대화 권한을 확인하지 못했어요:', e.message);
+        }
       }
+      if (check !== accessCheck) return;
+      if (started && (nextMe !== me || !allowed)) stop();
+      me = nextMe;
+      canChat = allowed;
       if (canChat && !started) start();
-      else render();
       syncVisibility();
     },
     // 이글루나 등대 안에서는 대화 창을 숨긴다. 연결은 유지해 나왔을 때 놓친 수를 보여준다.

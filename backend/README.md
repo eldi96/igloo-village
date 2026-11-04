@@ -4,7 +4,7 @@
 - 프로젝트 참조: `pvqnobhmqcfkeneccsjk`
 - SDK: `@supabase/supabase-js@2.118.0`, jsDelivr ESM. 버전을 고정한다.
 - `config.js`에는 공개용 publishable 키만 있다. 비밀 키를 추가하지 않는다.
-- 현재 스키마의 사본은 `schema.sql`. 원격 migration은 `initial_igloo_village_backend`, `consolidate_igloo_update_policy`, `add_invite_code_signup`, `add_village_chat`.
+- 현재 스키마의 사본은 `schema.sql`. 원격 migration은 `initial_igloo_village_backend`, `consolidate_igloo_update_policy`, `add_invite_code_signup`, `add_village_chat`, `restrict_chat_to_team`.
 - DB 구조를 바꾸면 `schema.sql`과 `verify-access.sql`도 함께 고친다.
 
 ## 현재 연결하는 범위
@@ -21,7 +21,7 @@
 - `igloos`: 마을용 위치 ID와 입주·공개 상태만 비로그인 조회 가능. 실제 프로젝트는 포함하지 않는다.
 - `members`: 역할은 관리자만 지정. 초대 코드로 수강생 승인. 사용자는 자기 표시 이름만 수정 가능.
 - `private.invite_codes`: 초대 코드는 해시로만 저장한다. 원본은 저장소에 적지 않는다.
-- `chat_messages`: 입주자와 강사만 읽고 쓴다. 자기 메시지만 삭제. 한 사람당 1초에 한 번만 전송.
+- `chat_messages`: `private.chat_members`에 지정된 계정만 읽고 쓴다. 자기 메시지만 삭제. 한 사람당 1초에 한 번만 전송. 지정 목록은 저장소에 적지 않는다.
 - `projects`: 승인된 수강생이 자기 이글루에 등록. 잠긴 이글루의 프로젝트는 소유자만 조회.
 - `mail_messages`: 승인된 강사만 현재 입주한 수강생에게 발송. 발신자·수신자만 조회. 읽음 수정은 수신자만 가능.
 - 등대는 `igloos` 테이블에 없으므로 학생이 선점할 수 없다.

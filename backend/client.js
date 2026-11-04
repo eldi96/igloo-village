@@ -170,7 +170,11 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
       const channel = api.channel('igloo-village-map').on('postgres_changes', { event: '*', schema: 'public', table: 'igloos' }, callback).subscribe();
       return () => api.removeChannel(channel);
     },
-    // 마을 대화. 읽고 쓰는 권한은 입주자와 강사로 DB에서 제한한다.
+    // 대화. 읽고 쓰는 권한은 지정된 계정으로 DB에서 제한한다.
+    async canUseChat() {
+      const api = await ready();
+      return Boolean(unwrap(await api.rpc('can_use_chat')));
+    },
     async getChat(limit = 100) {
       const api = await ready();
       return unwrap(await api.from('chat_messages').select(CHAT_COLUMNS).order('created_at', { ascending: false }).limit(limit)).reverse();

@@ -195,17 +195,27 @@ $$;
 revoke all on function public.join_with_invite(text, text) from public, anon;
 grant execute on function public.join_with_invite(text, text) to authenticated;
 
--- 마을 대화. 이글루 입주자와 강사만 읽고 쓴다.
+-- 대화는 지정한 계정만 쓴다. 목록은 DB에만 두고 저장소에 적지 않는다.
+create table private.chat_members (
+  member_id uuid primary key references public.members(id) on delete cascade,
+  added_at timestamptz not null default now()
+);
+revoke all on private.chat_members from public, anon, authenticated;
 create function private.can_chat() returns boolean language sql stable security definer set search_path = '' as $$
   select exists (
-    select 1 from public.members m
-    where m.id = (select auth.uid()) and m.approved and (
-      m.role = 'instructor' or exists (select 1 from public.igloos i where i.owner_id = m.id)
-    )
+    select 1 from private.chat_members c
+    join public.members m on m.id = c.member_id
+    where c.member_id = (select auth.uid()) and m.approved
   );
 $$;
 revoke all on function private.can_chat() from public, anon;
 grant execute on function private.can_chat() to authenticated;
+-- 화면이 대화 창을 보여줄지 묻는 함수. 자기 권한만 알 수 있다.
+create function public.can_use_chat() returns boolean language sql stable security invoker set search_path = '' as $$
+  select private.can_chat();
+$$;
+revoke all on function public.can_use_chat() from public, anon;
+grant execute on function public.can_use_chat() to authenticated;
 
 create table public.chat_messages (
   id uuid primary key default gen_random_uuid(),
@@ -224,7 +234,7 @@ create policy chat_read on public.chat_messages for select to authenticated
 create policy chat_send on public.chat_messages for insert to authenticated
   with check (sender_id = (select auth.uid()) and (select private.can_chat()));
 create policy chat_delete_own on public.chat_messages for delete to authenticated
-  using (sender_id = (select auth.uid()));
+  using (sender_id = (select auth.uid()) and (select private.can_chat()));
 
 -- 도배 방지: 한 사람은 1초에 한 번만 보낼 수 있다.
 create function private.chat_rate_limit() returns trigger language plpgsql security invoker set search_path = '' as $$
