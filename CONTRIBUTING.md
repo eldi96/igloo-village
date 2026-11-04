@@ -20,7 +20,7 @@ git switch -c feature/작업이름
 작업 후 브랜치를 푸시하고 `main`으로 PR을 엽니다. 다른 사람이 화면을 확인한 뒤 합칩니다.
 
 - PR 하나에는 기능 하나만 담습니다.
-- 합치기 전에 `node --test backend/client.test.mjs`를 실행합니다.
+- 합치기 전에 `node --test backend/client.test.mjs quality.test.mjs`를 실행합니다.
 - 화면을 바꿨다면 로컬에서 직접 확인하고, 확인한 내용과 못 한 내용을 PR에 적습니다.
 - 기능의 상태가 바뀌면 `PROGRESS.md`도 함께 고칩니다.
 

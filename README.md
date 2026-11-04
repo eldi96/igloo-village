@@ -33,7 +33,7 @@ python -m http.server 8123
 ## 테스트
 
 ```sh
-node --test backend/client.test.mjs
+node --test backend/client.test.mjs quality.test.mjs
 ```
 
 DB 권한 검증은 [backend/verify-access.sql](backend/verify-access.sql)에 있으며, 변경 내용을 모두 롤백합니다.
@@ -47,6 +47,7 @@ DB 권한 검증은 [backend/verify-access.sql](backend/verify-access.sql)에 �
 | `mailboxes.js` | 이글루별 우편함 외형과 도착 표시 시안 |
 | `auth-ui.js` | 로그인, 가입, 초대 코드, 이름 바꾸기 창 |
 | `chat-ui.js` | 마을 화면 오른쪽의 대화 창 |
+| `quality.js` | FPS에 따라 품질을 내리고 올리는 규칙 |
 | `room.js` | 일반 이글루 내부 이미지와 화면 비율 배치 |
 | `lighthouse-room.js` | 등대 내부 서재 |
 | `lighthouse-mail.js` | 수신자 선택, 메시지 작성, 확인 화면 시안 |
@@ -54,4 +55,4 @@ DB 권한 검증은 [backend/verify-access.sql](backend/verify-access.sql)에 �
 
 ## 성능 표시
 
-왼쪽 아래 FPS는 약 2초마다 갱신됩니다. 품질은 3/3에서 시작하며, FPS가 28 미만이면 단계적으로 낮아집니다. 공개 전에 지울 시험용 표시이며, 개발자 도구에서 `window.__iglooStats`로 FPS, 품질 단계, 삼각형 수, 드로 콜 수를 확인할 수 있습니다.
+왼쪽 아래 FPS는 약 2초마다 갱신됩니다. 품질은 3/3에서 시작해, FPS가 연속으로 28 미만이면 한 단계씩 낮아지고 45 이상이 유지되면 다시 올라갑니다. 규칙은 `quality.js`에 있습니다. 공개 전에 지울 시험용 표시이며, 개발자 도구에서 `window.__iglooStats`로 FPS, 품질 단계, 삼각형 수, 드로 콜 수를 확인할 수 있습니다.

@@ -46,6 +46,7 @@ import * as THREE from 'three';
 import { villageBackend } from './backend/client.js';
 import { mountAuth } from './auth-ui.js';
 import { mountChat } from './chat-ui.js';
+import { createQualityControl } from './quality.js';
 
 // DB 연결로 화면 렌더링을 기다리게 하지 않는다. 조작의 저장 연동은 로그인 UI 연결 후 진행한다.
 window.__iglooBackendStatus = villageBackend.status;
@@ -957,13 +958,17 @@ composer.addPass(bloom);
 composer.addPass(new OutputPass());
 composer.setPixelRatio(renderer.getPixelRatio());
 
-// 프레임이 계속 낮으면 품질을 한 단계씩 내린다
-const setRatio = r => { renderer.setPixelRatio(r); composer.setPixelRatio(r); };
-const QUALITY_STEPS = [
-  () => setRatio(1),
-  () => { bloom.enabled = false; },
-  () => { snowfall.visible = false; setRatio(0.8); }
-];
+// 프레임이 계속 낮으면 품질을 내리고, 다시 빨라지면 올린다. 단계를 정하는 규칙은 quality.js에 있다
+const BASE_RATIO = renderer.getPixelRatio();
+const QUALITY_LEVELS = 3;
+const applyQuality = level => {
+  const ratio = level === 0 ? BASE_RATIO : level < 3 ? 1 : 0.8;
+  renderer.setPixelRatio(ratio);
+  composer.setPixelRatio(ratio);
+  bloom.enabled = level < 2;
+  snowfall.visible = level < 3;
+};
+const quality = createQualityControl({ maxLevel: QUALITY_LEVELS, now: performance.now() });
 const perfEl = document.getElementById('perf');
 const stats = { fps: 0, level: 0, triangles: 0, calls: 0 };
 window.__iglooStats = stats;
@@ -972,15 +977,16 @@ const watchSpeed = () => {
   const now = performance.now(), gap = now - statLast;
   statLast = now;
   // 탭이 숨겨져 멈췄던 구간은 느린 기기로 오해하지 않게 건너뛴다
-  if (document.hidden || gap > 3000) { statFrames = 0; statStart = now; return; }
+  if (document.hidden || gap > 3000) { statFrames = 0; statStart = now; quality.pause(now); return; }
   statFrames++;
   if (now - statStart < 2000) return;
   stats.fps = Math.round(statFrames / ((now - statStart) / 1000));
   statFrames = 0;
   statStart = now;
-  if (stats.fps < 28 && stats.level < QUALITY_STEPS.length) QUALITY_STEPS[stats.level++]();
+  const level = quality.sample(stats.fps, now);
+  if (level !== stats.level) applyQuality(stats.level = level);
   // 시험용 표시. 공개할 때는 이 줄과 #perf를 지운다
-  perfEl.textContent = `${stats.fps} FPS · 품질 ${QUALITY_STEPS.length - stats.level}/${QUALITY_STEPS.length} · 삼각형 ${Math.round(stats.triangles / 10000)}만`;
+  perfEl.textContent = `${stats.fps} FPS · 품질 ${QUALITY_LEVELS - stats.level}/${QUALITY_LEVELS} · 삼각형 ${Math.round(stats.triangles / 10000)}만`;
 };
 
 // 인터랙션
