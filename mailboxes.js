@@ -12,6 +12,8 @@ export function addMailboxes(scene, { places, heightAt, previewHomeIndex = null 
   const brassMat = new THREE.MeshStandardMaterial({ color: 0x9f8150, metalness: 0.72, roughness: 0.48 });
   const snowMat = new THREE.MeshStandardMaterial({ color: 0xe0eaf1, roughness: 0.91 });
   const box = new RoundedBoxGeometry(1, 1, 1, 1, 0.08);
+  // 투입구, 손잡이처럼 작은 부품은 둥근 모서리가 보이지 않으니 일반 상자로 그린다.
+  const smallBox = new THREE.BoxGeometry(1, 1, 1);
   const mailLightMat = new THREE.MeshBasicMaterial({ color: 0xe9b570, toneMapped: false });
   const glowCanvas = document.createElement('canvas');
   glowCanvas.width = 128; glowCanvas.height = 64;
@@ -41,7 +43,7 @@ export function addMailboxes(scene, { places, heightAt, previewHomeIndex = null 
   };
   const extrude = (shape, depth, bevel = 0.008) => new THREE.ExtrudeGeometry(shape, {
     depth, steps: 1, bevelEnabled: bevel > 0, bevelThickness: bevel,
-    bevelSize: bevel, bevelSegments: 1, curveSegments: 16
+    bevelSize: bevel, bevelSegments: 1, curveSegments: 8
   });
   const body = extrude(arch(0.3, 0.2), 0.58);
   body.translate(0, 0, -0.29);
@@ -85,24 +87,24 @@ export function addMailboxes(scene, { places, heightAt, previewHomeIndex = null 
     part(home, origin, door, doorMat, 0, 0.825, 0.31);
     part(home, origin, snowCap, snowMat, 0, 0.79, 0);
     // 투입구와 빗물 가림턱, 작은 손잡이.
-    part(home, origin, box, seamMat, 0, 1.101, 0.331, 0.28, 0.025, 0.008);
-    part(home, origin, box, bodyMat, 0, 1.125, 0.341, 0.32, 0.018, 0.045);
-    part(home, origin, box, brassMat, 0, 0.956, 0.352, 0.095, 0.026, 0.036);
+    part(home, origin, smallBox, seamMat, 0, 1.101, 0.331, 0.28, 0.025, 0.008);
+    part(home, origin, smallBox, bodyMat, 0, 1.125, 0.341, 0.32, 0.018, 0.045);
+    part(home, origin, smallBox, brassMat, 0, 0.956, 0.352, 0.095, 0.026, 0.036);
     // 알림 표시의 경첩과 레버. 테스트 대상으로 지정한 한 곳만 올린다.
     const unread = homeIndex === previewHomeIndex;
-    part(home, origin, box, bodyMat, 0.333, 1.015, 0, 0.042, 0.07, 0.07);
+    part(home, origin, smallBox, bodyMat, 0.333, 1.015, 0, 0.042, 0.07, 0.07);
     if (unread) {
-      part(home, origin, box, brassMat, 0.356, 1.18, 0, 0.025, 0.33, 0.03);
-      part(home, origin, box, brassMat, 0.356, 1.31, 0.05, 0.028, 0.12, 0.14);
-      part(home, origin, box, mailLightMat, 0, 1.101, 0.339, 0.274, 0.02, 0.009);
+      part(home, origin, smallBox, brassMat, 0.356, 1.18, 0, 0.025, 0.33, 0.03);
+      part(home, origin, smallBox, brassMat, 0.356, 1.31, 0.05, 0.028, 0.12, 0.14);
+      part(home, origin, smallBox, mailLightMat, 0, 1.101, 0.339, 0.274, 0.02, 0.009);
       part(home, origin, glowGeometry, mailGlowMat, 0, 1.101, 0.364);
     } else {
-      part(home, origin, box, brassMat, 0.356, 1.015, 0.165, 0.025, 0.03, 0.33);
-      part(home, origin, box, brassMat, 0.356, 0.965, 0.295, 0.028, 0.14, 0.12);
+      part(home, origin, smallBox, brassMat, 0.356, 1.015, 0.165, 0.025, 0.03, 0.33);
+      part(home, origin, smallBox, brassMat, 0.356, 0.965, 0.295, 0.028, 0.14, 0.12);
     }
 
     for (const side of [-1, 1]) {
-      part(home, origin, box, brassMat, side * 0.19, 0.846, 0.334, 0.036, 0.018, 0.017);
+      part(home, origin, smallBox, brassMat, side * 0.19, 0.846, 0.334, 0.036, 0.018, 0.017);
     }
   }
   // 우편함 31개를 부품별로 묶어 드로 콜을 줄인다.

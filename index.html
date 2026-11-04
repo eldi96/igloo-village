@@ -416,8 +416,9 @@ const pushBlock = (M, tint) => {
   dummy.updateMatrix();
   blocks.push({ m: M.clone().multiply(dummy.matrix), c: tint, home: idx, center: [M.elements[12], M.elements[13], M.elements[14]] });
 };
-const domeInner = new THREE.SphereGeometry(R * 0.9, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2);
-const moundGeo = new THREE.SphereGeometry(1, 32, 10);
+// 안쪽 돔은 블록 틈으로 색만 비치므로 성기게 만들고, 눈더미는 땅 위 절반만 만든다
+const domeInner = new THREE.SphereGeometry(R * 0.9, 12, 5, 0, Math.PI * 2, 0, Math.PI / 2);
+const moundGeo = new THREE.SphereGeometry(1, 32, 5, 0, Math.PI * 2, 0, Math.PI / 2);
 const moundMat = new THREE.MeshStandardMaterial({ color: 0xeaf2f9, roughness: 0.8, bumpMap: snowBump, bumpScale: 1.2 });
 // 불 켜진 이글루는 블록 틈으로 따뜻한 빛이 샌다
 const litInnerMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(3.2, 1.65, 0.55) });
