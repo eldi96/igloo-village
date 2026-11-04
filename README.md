@@ -1,33 +1,57 @@
 # 이글루 마을
 
-수업 동료들이 프로젝트를 공유할 공간을 표현한 Three.js r160 기반의 밤 이글루 마을입니다.
+SKT ALEPH 수강생이 이글루 하나씩을 맡아 자기 프로젝트를 공유하는 3D 마을입니다. Three.js r160 기반 정적 사이트이고, DB와 로그인은 Supabase, 배포는 Vercel을 씁니다.
 
-현재 화면은 테스트 빌드이며 Supabase DB의 기반 연결을 추가했습니다. 로그인과 화면 저장 동작은 아직 연결하지 않아, 직접 꽂은 깃발은 새로고침하면 사라집니다. 연결 범위와 다음 작업은 [backend/README.md](backend/README.md)를 참고하세요.
+- 공개 주소: https://igloo-village.vercel.app/
+- `main`에 합쳐지면 Vercel이 자동으로 배포합니다.
 
-## 진행상황과 다음 작업
+## 지금 되는 것
 
-[PROGRESS.md](PROGRESS.md)에 구현 상태, 남은 작업, 사용자 결정과 검증 내용을 정리했습니다.
+- 로그인, 초대 코드 가입, 이글루 선택(깃발 저장)
+- 다른 사람의 깃발 실시간 표시
+- 입주자와 강사가 쓰는 실시간 마을 대화
+- 자기 이글루 안에서 이름 바꾸기
+
+프로젝트 등록, 공개/비공개, 우편 발송은 아직 화면에 연결되지 않았습니다. 구현 상태와 다음 작업은 [PROGRESS.md](PROGRESS.md)를 봅니다.
+
+## 함께 작업하기
+
+작업 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)를 먼저 읽어 주세요.
 
 ## 로컬 실행
 
-프로젝트 폴더에서 다음 명령을 실행하고 http://localhost:8123 을 엽니다.
+프로젝트 폴더에서 다음 명령을 실행하고 http://localhost:8123 을 엽니다. 빌드 과정은 없습니다.
 
 ```sh
 python -m http.server 8123
 ```
 
-Three.js와 부가 모듈은 jsDelivr CDN에서 불러오므로 인터넷 연결이 필요합니다.
+- Three.js와 Supabase SDK는 jsDelivr CDN에서 불러오므로 인터넷 연결이 필요합니다.
+- **로컬에서도 실제 Supabase DB에 연결됩니다.** 시험으로 만든 계정과 메시지는 실제 사이트에 그대로 나타납니다.
+- 파일을 고쳤는데 그대로 보이면 `Ctrl+Shift+R`로 새로고침합니다.
+
+## 테스트
+
+```sh
+node --test backend/client.test.mjs
+```
+
+DB 권한 검증은 [backend/verify-access.sql](backend/verify-access.sql)에 있으며, 변경 내용을 모두 롤백합니다.
 
 ## 파일 역할
 
-- `index.html`: 화면과 스타일, 마을 장면, 카메라와 입력 처리, 이글루 선택과 장면 전환, 성능 측정.
-- `village.js`: 길, 나무, 연못, 등대 등 마을 소품과 애니메이션.
-- `room.js`: 일반 이글루 내부 임시 장면과 모닥불 애니메이션.
-- `mailboxes.js`: 이글루별 우편함과 도착 표시 시안.
-- `lighthouse-room.js`: 등대 내부 서재와 책상 지도.
-- `lighthouse-mail.js`: 수신자 선택·메시지 작성·확인 화면 시안.
-- `backend/`: Supabase 기반 연결, DB 구조·권한과 검증 코드.
+| 파일 | 역할 |
+| --- | --- |
+| `index.html` | 마을 장면, 입력, 카메라, 이글루 상태, 하단 UI, 장면 전환 |
+| `village.js` | 도로, 호수, 나무, 가로등, 등대 등 마을 소품 |
+| `mailboxes.js` | 이글루별 우편함 외형과 도착 표시 시안 |
+| `auth-ui.js` | 로그인, 가입, 초대 코드, 이름 바꾸기 창 |
+| `chat-ui.js` | 마을 화면 오른쪽의 대화 창 |
+| `room.js` | 일반 이글루 내부 이미지와 화면 비율 배치 |
+| `lighthouse-room.js` | 등대 내부 서재 |
+| `lighthouse-mail.js` | 수신자 선택, 메시지 작성, 확인 화면 시안 |
+| `backend/` | Supabase 연결, DB 구조, 권한, 검증 코드 |
 
 ## 성능 표시
 
-왼쪽 아래 FPS는 약 2초마다 갱신되는 초당 프레임 수입니다. 품질은 3/3에서 시작하며, FPS가 28 미만이면 단계적으로 낮아집니다. 삼각형 수는 현재 렌더링 통계의 대략적인 값입니다. 노트북 성능 비교를 위해 표시하며, 개발자 도구에서 `window.__iglooStats`로 FPS, 품질 저하 단계, 삼각형 수와 드로 콜 수를 확인할 수 있습니다.
+왼쪽 아래 FPS는 약 2초마다 갱신됩니다. 품질은 3/3에서 시작하며, FPS가 28 미만이면 단계적으로 낮아집니다. 공개 전에 지울 시험용 표시이며, 개발자 도구에서 `window.__iglooStats`로 FPS, 품질 단계, 삼각형 수, 드로 콜 수를 확인할 수 있습니다.
