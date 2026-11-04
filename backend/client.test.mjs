@@ -68,5 +68,6 @@ test('invalid home IDs and unsafe links fail before connection or mutation', asy
   await assert.rejects(backend.sendChat('   '), /메시지/);
   await assert.rejects(backend.sendChat('가'.repeat(501)), /메시지/);
   await assert.rejects(backend.deleteChat('not-a-message'), /메시지/);
+  await assert.rejects(backend.deleteProject('not-a-project'), /프로젝트/);
   assert.equal(loaded, false);
 });

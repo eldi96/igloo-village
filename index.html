@@ -1279,20 +1279,17 @@ async function goInside(ig) {
     });
     room = lighthouseRoom;
   } else {
-    if (!iglooRoom) iglooRoom = (await import('./room.js')).createRoom(canvas);
+    if (!iglooRoom) iglooRoom = (await import('./room.js')).createRoom({ canvas, backend: villageBackend });
     room = iglooRoom;
-    await room.ready;
   }
   room.setAspect?.(W() / H());
   if (ig.gate) ig.gate.visible = false;
   fadeThrough(() => {
     mode = 'room';
     chat.setHidden(true);
-    if (room === iglooRoom) room.show();
-    else {
-      renderPass.scene = room.scene;
-      renderPass.camera = room.camera;
-    }
+    if (room === iglooRoom) room.enter({ home: ig.home, isMine: ig.mine, ownerName: ig.mine ? auth.member?.display_name : ig.owner });
+    renderPass.scene = room.scene;
+    renderPass.camera = room.camera;
     showRoomActions(ig);
   });
 }
@@ -1302,7 +1299,7 @@ function goOutside(ig) {
   canvas.style.cursor = '';
   fadeThrough(() => {
     if (ig.gate) ig.gate.visible = true;
-    iglooRoom?.hide();
+    iglooRoom?.leave();
     renderPass.scene = scene;
     renderPass.camera = camera;
     mode = 'in';
@@ -1325,16 +1322,13 @@ function frame() {
   const dt = Math.min(clock.getDelta(), 0.25), t = clock.elapsedTime;
   if (mode === 'room') {
     igloos.forEach(ig => { if (ig.label) ig.label.style.display = 'none'; });
-    // 이글루 안은 이미지 한 장이라 3D를 그리지 않는다
-    if (room !== iglooRoom) {
-      const writingMail = mailComposer?.isOpen();
-      room.update(t, writingMail ? 0 : mx, writingMail ? 0 : my);
-      renderer.info.reset();
-      composer.render();
-      stats.triangles = renderer.info.render.triangles;
-      stats.calls = renderer.info.render.calls;
-      watchSpeed();
-    }
+    const writingMail = mailComposer?.isOpen();
+    room.update(t, writingMail ? 0 : mx, writingMail ? 0 : my);
+    renderer.info.reset();
+    composer.render();
+    stats.triangles = renderer.info.render.triangles;
+    stats.calls = renderer.info.render.calls;
+    watchSpeed();
     requestAnimationFrame(frame);
     return;
   }
