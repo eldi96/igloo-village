@@ -15,14 +15,19 @@ const STYLE = `
   .chat-list { flex: 1; min-height: 0; margin: 0; padding: 8px 16px 12px; overflow-y: auto; overscroll-behavior: contain; list-style: none; scrollbar-width: thin; scrollbar-color: rgba(224,239,250,.16) transparent; }
   .chat-empty { display: flex; flex: 1; align-items: center; justify-content: center; padding: 24px; color: #9fb0bc; text-align: center; text-wrap: balance; }
   .chat-empty[hidden], .chat-list[hidden], .chat-form[hidden], .chat-new[hidden], .chat-note:empty { display: none; }
-  .chat-msg { position: relative; padding: 1px 0; }
+  .chat-msg { display: flex; flex-direction: column; align-items: flex-start; padding: 1.5px 0; }
+  .chat-msg[data-mine="true"] { align-items: flex-end; }
   .chat-msg[data-first="true"] { margin-top: 12px; }
-  .chat-meta { display: flex; align-items: baseline; gap: 6px; margin-bottom: 1px; }
+  .chat-meta { display: flex; align-items: baseline; gap: 6px; margin-bottom: 3px; }
   .chat-name { max-width: 200px; overflow: hidden; color: #dbe6ed; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
   .chat-time { color: #8295a3; font-size: 11px; font-variant-numeric: tabular-nums; }
-  .chat-body { margin: 0; padding-right: 34px; color: #e9f1f6; overflow-wrap: anywhere; white-space: pre-wrap; }
+  .chat-row { display: flex; align-items: flex-end; gap: 2px; max-width: 86%; }
+  .chat-msg[data-mine="true"] .chat-row { flex-direction: row-reverse; }
+  .chat-body { min-width: 0; margin: 0; padding: 6px 10px; border-radius: 12px; background: rgba(233,243,250,.09); color: #e9f1f6; overflow-wrap: anywhere; white-space: pre-wrap; }
+  .chat-msg[data-mine="true"] .chat-body { background: #e5edf3; color: #152431; }
   .chat-body a { color: #cfe3f2; text-underline-offset: 2px; }
-  .chat-del { position: absolute; right: -6px; bottom: 0; padding: 1px 6px; border: 0; border-radius: 6px; background: transparent; color: #8295a3; font: inherit; font-size: 11px; cursor: pointer; opacity: 0; transition: opacity 100ms ease, color 100ms ease; }
+  .chat-msg[data-mine="true"] .chat-body a { color: #1c4a6e; }
+  .chat-del { flex: none; padding: 1px 6px; border: 0; border-radius: 6px; background: transparent; color: #8295a3; font: inherit; font-size: 11px; white-space: nowrap; cursor: pointer; opacity: 0; transition: opacity 100ms ease, color 100ms ease; }
   .chat-msg:hover .chat-del, .chat-del:focus-visible { opacity: 1; }
   .chat-new { align-self: center; flex: none; margin: -38px 0 8px; padding: 5px 12px; border: 1px solid rgba(232,242,249,.14); border-radius: 14px; background: #e5edf3; color: #152431; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; z-index: 1; }
   .chat-note { flex: none; margin: 0; padding: 0 16px 8px; color: #ffb4a8; font-size: 12px; }
@@ -118,7 +123,7 @@ export function mountChat(backend) {
 
   const nearBottom = () => list.scrollHeight - list.scrollTop - list.clientHeight < NEAR_BOTTOM;
   const toBottom = () => { list.scrollTop = list.scrollHeight; newBtn.hidden = true; };
-  const nameOf = id => id === me ? '나' : names.get(id) || '수강생';
+  const nameOf = id => names.get(id) || '수강생';
   const clock = iso => new Date(iso).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
   const showNote = text => { note.textContent = text; };
 
@@ -138,33 +143,41 @@ export function mountChat(backend) {
       li.className = 'chat-msg';
       const time = new Date(message.created_at).getTime();
       const first = !previous || previous.sender_id !== message.sender_id || time - new Date(previous.created_at).getTime() > GROUP_MS;
+      const mine = message.sender_id === me;
       li.dataset.first = String(first);
+      li.dataset.mine = String(mine);
       if (first) {
         const meta = document.createElement('div');
         meta.className = 'chat-meta';
-        const name = document.createElement('span');
-        name.className = 'chat-name';
-        name.textContent = nameOf(message.sender_id);
+        if (!mine) {
+          const name = document.createElement('span');
+          name.className = 'chat-name';
+          name.textContent = nameOf(message.sender_id);
+          meta.append(name);
+        }
         const stamp = document.createElement('time');
         stamp.className = 'chat-time';
         stamp.dateTime = message.created_at;
         stamp.textContent = clock(message.created_at);
-        meta.append(name, stamp);
+        meta.append(stamp);
         li.append(meta);
       }
+      const row = document.createElement('div');
+      row.className = 'chat-row';
       const body = document.createElement('p');
       body.className = 'chat-body';
       fillBody(body, message.body);
-      li.append(body);
-      if (message.sender_id === me) {
+      row.append(body);
+      if (mine) {
         const del = document.createElement('button');
         del.type = 'button';
         del.className = 'chat-del';
         del.textContent = '삭제';
         del.setAttribute('aria-label', '내 메시지 삭제');
         del.onclick = () => remove(message.id);
-        li.append(del);
+        row.append(del);
       }
+      li.append(row);
       list.append(li);
       previous = message;
     }
