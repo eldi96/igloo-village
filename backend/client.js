@@ -148,6 +148,12 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
       const { api, member } = await requireMember('student');
       return unwrap(await api.from('projects').insert({ igloo_id: id, owner_id: member.id, title: title.trim(), description, url: safeUrl }).select(PROJECT_COLUMNS).single());
     },
+    async deleteProject(id) {
+      if (!UUID.test(id)) throw new Error('존재하지 않는 프로젝트입니다.');
+      const { api, member } = await requireMember('student');
+      const { error } = await api.from('projects').delete().eq('id', id).eq('owner_id', member.id);
+      if (error) throw error;
+    },
     async getInbox() {
       const { api, member } = await requireMember();
       return unwrap(await api.from('mail_messages').select(MAIL_COLUMNS).eq('recipient_id', member.id).order('created_at', { ascending: false }).limit(100));
