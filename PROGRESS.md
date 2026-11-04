@@ -83,7 +83,7 @@ Three.js r160 기반의 정적 사이트이고, DB와 로그인은 Supabase, 배
 ## 마을 대화와 이름 수정 (2026-11-04 추가)
 
 - 마을 화면 오른쪽에 대화 창이 있고, 이글루나 등대 안에서는 숨긴다.
-- 이글루 입주자와 강사만 읽고 쓴다. 로그아웃 상태에서는 보이지 않고, 입주 전에는 안내 문구만 보인다.
+- `private.chat_members`에 지정된 협업자 계정만 읽고 쓴다. 다른 계정과 로그아웃 상태에서는 창이 보이지 않는다. 수강생 전체에게 열려면 이 제한을 다시 정해야 한다.
 - 내 메시지는 오른쪽, 상대 메시지는 왼쪽에 둥근 사각형으로 표시한다. 최근 100개를 불러오고, 500자까지 보낼 수 있으며, 자기 메시지만 삭제한다.
 - 3D 화면 위에서 프레임이 떨어지지 않도록 큰 창에는 `backdrop-filter`를 쓰지 않는다.
 - 자기 이글루 안의 `이름 바꾸기`로 표시 이름을 바꾼다. 다른 사람 화면에는 새로고침하거나 지도가 갱신될 때 반영된다.
@@ -188,10 +188,10 @@ Three.js r160 기반의 정적 사이트이고, DB와 로그인은 Supabase, 배
 - `mail_messages`: 발신자·수신자, 메시지·링크, 발송·읽음 시간.
 - `claim_igloo`: 승인된 수강생의 원자적 선점 처리.
 - `send_mail`: 승인된 강사의 단체 발송. 수신자 전체를 검증한 뒤 한 트랜잭션으로 저장.
-- `chat_messages`: 마을 대화. 입주자와 강사만 읽고 쓰며, 한 사람당 1초에 한 번만 보낼 수 있다.
+- `chat_messages`: 대화. `private.chat_members`에 지정된 계정만 읽고 쓰며, 한 사람당 1초에 한 번만 보낼 수 있다.
 - Realtime 게시 대상: `igloos`, `mail_messages`, `chat_messages`.
 - `private.invite_codes`, `check_invite`, `join_with_invite`: 초대 코드 확인과 수강생 승인. 유효한 코드가 2개 있다.
-- 원격 적용 이력: `initial_igloo_village_backend`, `consolidate_igloo_update_policy`, `add_invite_code_signup`, `add_village_chat`.
+- 원격 적용 이력: `initial_igloo_village_backend`, `consolidate_igloo_update_policy`, `add_invite_code_signup`, `add_village_chat`, `restrict_chat_to_team`.
 
 ### 접근 권한
 

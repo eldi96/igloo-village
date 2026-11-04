@@ -1221,7 +1221,7 @@ async function syncVillage(raiseHome = null) {
     }
     igloos.forEach(ig => { if (!ig.house && !homes.find(h => h.id === ig.home)?.owner_id) ig.mine = false; });
     updateCount();
-    chat.setAccess({ user: auth.user, member: auth.member, hasHome: Boolean(mine) });
+    chat.setAccess({ user: auth.user, member: auth.member });
   })();
   try {
     await syncing;
