@@ -4,7 +4,7 @@
 - 프로젝트 참조: `pvqnobhmqcfkeneccsjk`
 - SDK: `@supabase/supabase-js@2.118.0`, jsDelivr ESM. 버전을 고정한다.
 - `config.js`에는 공개용 publishable 키만 있다. 비밀 키를 추가하지 않는다.
-- 현재 스키마의 사본은 `schema.sql`. 원격 migration은 `initial_igloo_village_backend`, `consolidate_igloo_update_policy`, `add_invite_code_signup`, `add_village_chat`, `restrict_chat_to_team`.
+- 현재 스키마의 사본은 `schema.sql`. 원격 migration은 `initial_igloo_village_backend`, `consolidate_igloo_update_policy`, `add_invite_code_signup`, `add_village_chat`, `restrict_chat_to_team`, `add_igloo_latest_project_time`.
 - DB 구조를 바꾸면 `schema.sql`과 `verify-access.sql`도 함께 고친다.
 
 ## 현재 연결하는 범위
@@ -14,11 +14,11 @@
 
 - 화면에 연결된 것: 로그인, 초대 코드 가입, 이름 수정, 이글루 선점, 지도 실시간 구독, 마을 대화.
 - 함수만 있고 화면에 연결되지 않은 것: 공개 설정, 프로젝트, 우편.
-- 아직 시안인 것: 빛기둥, 우편 도착 표시, 등대 발송 화면.
+- 아직 시안인 것: 우편 도착 표시, 등대 발송 화면.
 
 ## DB 권한
 
-- `igloos`: 마을용 위치 ID와 입주·공개 상태만 비로그인 조회 가능. 실제 프로젝트는 포함하지 않는다.
+- `igloos`: 마을용 위치 ID, 입주·공개 상태, 마지막 프로젝트 등록 시간만 비로그인 조회 가능. 프로젝트 내용은 포함하지 않는다. 등록 시간은 DB가 기록하고 사용자가 고칠 수 없다.
 - `members`: 역할은 관리자만 지정. 초대 코드로 수강생 승인. 사용자는 자기 표시 이름만 수정 가능.
 - `private.invite_codes`: 초대 코드는 해시로만 저장한다. 원본은 저장소에 적지 않는다.
 - `chat_messages`: `private.chat_members`에 지정된 계정만 읽고 쓴다. 자기 메시지만 삭제. 한 사람당 1초에 한 번만 전송. 지정 목록은 저장소에 적지 않는다.
@@ -36,7 +36,7 @@
 2. 공개 설정을 `setIglooPublic`과 연결한다.
 3. 강사 계정을 지정한다. 누구나 강사로 가입하거나 자동 승인되게 만들지 않는다.
 4. 강사 발송 화면·수신함을 연결한다.
-5. 실제 새 프로젝트 등록 시간으로 빛기둥, 미확인 우편 수로 우편함 표시를 제어한다.
+5. 미확인 우편 수로 우편함 표시를 제어한다.
 6. 로그인 사용자가 바뀌거나 로그아웃하면 이전 우편 구독을 해제하고 개인 화면 데이터를 비운다.
 
 `client.js`가 연결·조회·로그인·선점·프로젝트·우편·대화·구독 API를 제공한다. UI와 DB 권한을 서로 대신하지 않는다.
