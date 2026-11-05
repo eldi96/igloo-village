@@ -955,10 +955,15 @@ function fitRipples(ig) {
 
 // 마을 소품은 별도 파일. 없어도 장면은 그대로 뜬다
 let village = null;
-import('./village.js')
+let santa = null;
+import('./village.js?v=santa-glb')
   .then(m => {
     village = m.addVillage(scene, { places, hub: HUB, heightAt, rng, lighthouse: LIGHTHOUSE, mailPreviewHome: TEST_IGLOO_INDEX });
     renderer.shadowMap.needsUpdate = true;
+    import('./santa.js?v=idle-motion')
+      .then(({ addSanta }) => addSanta(scene, { fireSpot: village.fireSpot, heightAt, height: R * 0.8 }))
+      .then(character => { santa = character; renderer.shadowMap.needsUpdate = true; })
+      .catch(error => console.warn('산타 모델을 불러오지 못했어요:', error));
   })
   .catch(() => {});
 renderer.shadowMap.needsUpdate = true;
@@ -1383,6 +1388,7 @@ function frame() {
   mountainTitle.material.opacity = titleOpacity;
   mountainTitle.visible = titleOpacity > 0.01;
   if (village) village.update(t);
+  if (santa) santa.update(dt);
 
   flags.forEach(f => { f.time.value = t; });
   if (raising) {
