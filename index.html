@@ -43,7 +43,7 @@
 <div class="fallback" id="fallback">이 브라우저에서는 3D 화면을 띄울 수 없어요.</div>
 <script type="module">
 import * as THREE from 'three';
-import { villageBackend } from './backend/client.js?v=exterior-light';
+import { villageBackend } from './backend/client.js?v=observatory-access';
 import { mountAuth } from './auth-ui.js';
 import { mountChat } from './chat-ui.js';
 import { mountCommentMailbox } from './comment-mailbox.js?v=glass-mail';
@@ -1393,9 +1393,15 @@ async function syncVillage(raiseHome = null) {
 // 다른 사람이 깃발을 꽂으면 새로고침 없이 바로 보이게 한다
 villageBackend.subscribeMap(() => syncVillage().catch(() => {})).catch(() => {});
 syncVillage().catch(error => console.warn('마을 상태를 불러오지 못했어요:', error.message));
-function enter(ig) {
+async function enter(ig) {
   if (ig.stats) {
     focusOn(ig);
+    const userId = auth.user?.id;
+    setBar('출입 권한을 확인하고 있어요.');
+    let allowed = false;
+    try { allowed = await villageBackend.canViewObservatory(); } catch {}
+    if (mode !== 'in' || auth.user?.id !== userId) return;
+    if (!allowed) return setBar('개발팀 전용 공간입니다.', [['마을로 돌아가기', leave]]);
     return setBar('마을 관측소', [['방문 통계 보기', openVisitDashboard, true], ['마을로 돌아가기', leave]]);
   }
   if (!ig.house && !ig.mine && !ig.isPublic) return setBar('이글루가 닫혔습니다. 외부인이 들어오지 못합니다.', [['마을로 돌아가기', leave, true]]);
@@ -1410,8 +1416,11 @@ async function openVisitDashboard() {
   if (openingStats || mode !== 'in') return;
   openingStats = true;
   try {
+    const userId = auth.user?.id;
+    if (!await villageBackend.canViewObservatory()) return setBar('개발팀 전용 공간입니다.', [['마을로 돌아가기', leave]]);
+    if (mode !== 'in' || auth.user?.id !== userId) return;
     if (!visitDashboard) {
-      const { createVisitDashboard } = await import('./visit-dashboard.js?v=experiment');
+      const { createVisitDashboard } = await import('./visit-dashboard.js?v=team-access');
       visitDashboard = createVisitDashboard(villageBackend, { getMember: () => auth.member, onExit: closeVisitDashboard });
     }
     if (mode !== 'in') return;

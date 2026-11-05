@@ -1,5 +1,5 @@
 import { normalizeExperiment, visitNumber } from './visit-data.js';
-import { mountExperimentView } from './visit-experiment-view.js';
+import { mountExperimentView } from './visit-experiment-view.js?v=team-access';
 
 export function createVisitDashboard(backend, { getMember, onExit }) {
   const style = document.createElement('style');
@@ -93,9 +93,12 @@ export function createVisitDashboard(backend, { getMember, onExit }) {
     const token=++generation,member=getMember();
     if(loadedUser!==member?.id)view.clear();loadedUser=member?.id;
     busy=false;refreshButton.disabled=false;q('.obs-updated').textContent='';
-    if(!member?.approved){view.clear();showState('로그인한 승인 회원만 방문 통계를 볼 수 있어요. 밖으로 나가 로그인한 뒤 다시 방문해 주세요.');return;}
+    if(!member?.approved){view.clear();showState('개발팀 계정으로 로그인해야 들어갈 수 있어요.');return;}
     busy=true;refreshButton.disabled=true;showState('실험 기록을 불러오는 중…');
     try{
+      const allowed=await backend.canViewObservatory();
+      if(!opened||token!==generation||loadedUser!==getMember()?.id)return;
+      if(!allowed){view.clear();showState('개발팀 전용 공간입니다.');return;}
       const [experiment,mine]=await Promise.allSettled([backend.getVisitExperiment(Number(q('select').value)),backend.getMemberVisitCounts()]);
       if(!opened||token!==generation||loadedUser!==getMember()?.id)return;
       if(experiment.status==='rejected')throw experiment.reason;

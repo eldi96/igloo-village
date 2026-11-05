@@ -399,8 +399,8 @@ returns table (
 )
 language plpgsql stable security definer set search_path = '' as $$
 begin
-  if not private.is_member() then
-    raise insufficient_privilege using message = '승인된 회원만 접속 통계를 볼 수 있습니다.';
+  if not private.can_chat() then
+    raise insufficient_privilege using message = '개발팀만 관측소 통계를 볼 수 있습니다.';
   end if;
   if p_days is null or p_days < 1 or p_days > 90 then
     raise invalid_parameter_value using message = '조회 기간은 1~90일이어야 합니다.';
@@ -479,8 +479,8 @@ returns table (
 )
 language plpgsql stable security definer set search_path = '' as $$
 begin
-  if not private.is_member() then
-    raise insufficient_privilege using message = '승인된 회원만 접속 통계를 볼 수 있습니다.';
+  if not private.can_chat() then
+    raise insufficient_privilege using message = '개발팀만 관측소 통계를 볼 수 있습니다.';
   end if;
   if p_days is null or p_days < 1 or p_days > 90 then
     raise invalid_parameter_value using message = '조회 기간은 1~90일이어야 합니다.';
@@ -499,7 +499,7 @@ begin
       count(p.member_id) filter (where p.cohort = 1)::integer as b_total,
       count(v.member_id) filter (where p.cohort = 1)::integer as b_active,
       count(p.member_id)::integer as t_total,
-      count(v.member_id) filter (where p.member_id is not null)::integer as t_active
+      count(v.member_id)::integer as t_active
     from days
     left join public.visit_participants p
       on p.included_from <= days.day
@@ -751,7 +751,7 @@ declare
   started date;
   result jsonb;
 begin
-  if not private.is_member() then raise insufficient_privilege using message='승인된 회원만 통계를 볼 수 있습니다.'; end if;
+  if not private.can_chat() then raise insufficient_privilege using message='개발팀만 관측소 통계를 볼 수 있습니다.'; end if;
   if p_days is null or p_days < 1 or p_days > 90 then raise invalid_parameter_value using message='조회 기간은 1~90일이어야 합니다.'; end if;
   select min(p.included_from) into started from public.visit_participants p where p.cohort=1;
   select min(p.included_from) into actual_expansion from public.visit_participants p
@@ -932,3 +932,11 @@ create function public.get_exterior_light() returns jsonb language sql stable se
 create function public.set_exterior_light(p_color text) returns jsonb language sql volatile security invoker set search_path = '' as $$ select private.save_exterior_light(p_color); $$;
 revoke all on function public.get_exterior_light(),public.set_exterior_light(text) from public,anon,authenticated;
 grant execute on function public.get_exterior_light(),public.set_exterior_light(text) to authenticated;
+
+-- 관측소와 개발팀 대화는 같은 협업자 명단(private.chat_members)을 사용한다.
+create function public.can_view_observatory() returns boolean
+language sql stable security invoker set search_path = '' as $$
+  select private.can_chat();
+$$;
+revoke all on function public.can_view_observatory() from public, anon;
+grant execute on function public.can_view_observatory() to authenticated;

@@ -133,4 +133,11 @@ do $$ begin
     raise exception 'FAIL: exterior light reward grants';
   end if;
 end $$;
+do $$ begin
+  if has_function_privilege('anon','public.can_view_observatory()','EXECUTE')
+    or not has_function_privilege('authenticated','public.can_view_observatory()','EXECUTE')
+    or has_table_privilege('authenticated','private.chat_members','SELECT') then
+    raise exception 'FAIL: observatory access grants';
+  end if;
+end $$;
 rollback;

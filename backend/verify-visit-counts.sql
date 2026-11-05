@@ -31,6 +31,8 @@ select set_config('igloo.count_start_baseline',
      and p.included_from <= v.visit_date
      and (p.included_until is null or p.included_until >= v.visit_date)),true);
 
+-- 집계 계산 시험용 임시 조회 권한. 마지막 rollback으로 제거.
+insert into private.chat_members(member_id) values(current_setting('igloo.count_test_a')::uuid),(current_setting('igloo.count_test_b')::uuid);
 set local role anon;
 do $$ begin
   begin
