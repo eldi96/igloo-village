@@ -457,6 +457,7 @@ export function addVillage(scene, ctx) {
     mesh.computeBoundingSphere(); root.add(mesh);
   }
   return {
+    fireSpot,
     update(timeSeconds) {
       if (beacon) beacon.rotation.y = timeSeconds * 0.12;
       const flicker = 0.86 + 0.09 * Math.sin(timeSeconds * 11.7) + 0.05 * Math.sin(timeSeconds * 23.1);
