@@ -72,6 +72,8 @@ create table public.projects (
   owner_id uuid not null references public.members(id),
   title text not null check (char_length(title) between 1 and 120),
   description text not null default '' check (char_length(description) <= 5000),
+  instructions text not null default '' check (char_length(instructions) <= 5000),
+  image_path text check (image_path is null or image_path ~ ('^' || owner_id::text || '/[0-9a-f-]+[.]jpg$')),
   url text not null check (char_length(url) <= 2048 and url ~* '^https?://[^[:space:]]+$'),
   created_at timestamptz not null default now()
 );
@@ -80,8 +82,8 @@ create index projects_owner on public.projects(owner_id);
 alter table public.projects enable row level security;
 revoke all on public.projects from public, anon, authenticated;
 grant select, delete on public.projects to authenticated;
-grant insert(igloo_id, owner_id, title, description, url) on public.projects to authenticated;
-grant update(title, description, url) on public.projects to authenticated;
+grant insert(igloo_id, owner_id, title, description, instructions, image_path, url) on public.projects to authenticated;
+grant update(title, description, instructions, image_path, url) on public.projects to authenticated;
 create policy projects_read on public.projects for select to authenticated using (
   (select private.is_member()) and (owner_id = (select auth.uid()) or exists (
     select 1 from public.igloos i where i.id = projects.igloo_id and i.owner_id = projects.owner_id and i.is_public
@@ -266,4 +268,51 @@ create trigger chat_rate_limit before insert on public.chat_messages
   for each row execute function private.chat_rate_limit();
 
 alter publication supabase_realtime add table public.chat_messages;
+insert into storage.buckets(id, name, public, file_size_limit, allowed_mime_types)
+values ('project-images', 'project-images', false, 5242880, array['image/jpeg']);
+create policy project_images_insert on storage.objects for insert to authenticated
+with check (bucket_id = 'project-images' and (storage.foldername(name))[1] = (select auth.uid())::text and (select private.is_student()));
+create policy project_images_read on storage.objects for select to authenticated
+using (bucket_id = 'project-images' and (
+  (storage.foldername(name))[1] = (select auth.uid())::text
+  or exists (select 1 from public.projects p where p.image_path = name)
+));
+create policy project_images_delete on storage.objects for delete to authenticated
+using (bucket_id = 'project-images' and (storage.foldername(name))[1] = (select auth.uid())::text);
+-- 직접 등록 프로젝트의 댓글과 반응. 기존 프로젝트는 변경하지 않는다.
+create table public.project_comments (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  member_id uuid not null references public.members(id) on delete cascade,
+  body text not null check (char_length(body) between 1 and 1000 and btrim(body) <> ''),
+  created_at timestamptz not null default now()
+);
+create index project_comments_time on public.project_comments(project_id, created_at);
+alter table public.project_comments enable row level security;
+revoke all on public.project_comments from public, anon, authenticated;
+grant select on public.project_comments to authenticated;
+grant insert(project_id, member_id, body) on public.project_comments to authenticated;
+create policy project_comments_read on public.project_comments for select to authenticated
+using ((select private.is_member()) and exists (select 1 from public.projects p where p.id = project_id));
+create policy project_comments_insert on public.project_comments for insert to authenticated
+with check (member_id = (select auth.uid()) and (select private.is_member()) and exists (select 1 from public.projects p where p.id = project_id));
+
+create table public.project_reactions (
+  project_id uuid not null references public.projects(id) on delete cascade,
+  member_id uuid not null references public.members(id) on delete cascade,
+  emoji text not null check (emoji in ('👍', '❤️')),
+  created_at timestamptz not null default now(),
+  primary key (project_id, member_id, emoji)
+);
+alter table public.project_reactions enable row level security;
+revoke all on public.project_reactions from public, anon, authenticated;
+grant select, delete on public.project_reactions to authenticated;
+grant insert(project_id, member_id, emoji) on public.project_reactions to authenticated;
+create policy project_reactions_read on public.project_reactions for select to authenticated
+using ((select private.is_member()) and exists (select 1 from public.projects p where p.id = project_id));
+create policy project_reactions_insert on public.project_reactions for insert to authenticated
+with check (member_id = (select auth.uid()) and (select private.is_member()) and exists (select 1 from public.projects p where p.id = project_id));
+create policy project_reactions_delete on public.project_reactions for delete to authenticated
+using (member_id = (select auth.uid()) and (select private.is_member()) and exists (select 1 from public.projects p where p.id = project_id));
+
 commit;
