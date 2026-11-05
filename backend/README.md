@@ -94,3 +94,10 @@ DB 설정이 끝났다는 이유로 테스트용 수강생이나 화면의 소�
 ### 전체 마을에서 점등 보기 (추가 적용)
 
 기존의 본인 화면만 점등하던 동작을 변경했다. get_unread_mailbox_homes RPC로 이글루 ID만 모두에게 공개하고 알림 본문 권한은 유지한다. mailbox-glow.sql 원격 적용 완료. 전체 화면은 10초 주기로 갱신하고, 현재 화면의 댓글 작성·삭제와 본인 읽음 처리는 즉시 재조회한다. 추가 테이블·컬럼·RLS 변경 없음. 의도된 공개 SECURITY DEFINER 함수: [공개 함수 권한 점검](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable).
+
+
+## 관측소 개발팀 전용 (2026-11-06)
+
+- observatory-access.sql 원격 적용 완료: private.chat_members의 승인된 개발팀 4명만 출입·통계 조회. can_view_observatory RPC 추가, 기존 실험/횟수/추이 함수의 권한 검사만 변경. 테이블·방문 수집·개별 본인 접속 횟수 조회 변경 없음. 기존 서버 집계식 보존.
+- verify-observatory-access.sql은 실제 계정의 익명/일반 수강생 거부·개발팀 4명 허용을 읽기만으로 검증하고 권한 컨텍스트를 rollback. 기존 집계 계산 검증 파일은 임시 시험 회원에게 트랜잭션 내 조회 권한을 부여하고 rollback.
+- 이번 변경 이후 관측소와 개발팀 대화의 권한 명단은 동일하며, 개발팀 변경 시 private.chat_members를 관리한다. 통계 제외 명단(private.visit_exclusions)은 기존 고정 명단으로 별개 유지.

@@ -17,6 +17,9 @@ do $$ begin
   begin perform public.get_visit_experiment(14);raise exception 'FAIL anonymous read';exception when insufficient_privilege then null;end;
 end $$;
 reset role;
+-- 집계 계산 시험용 임시 조회 권한. 마지막 rollback으로 제거.
+insert into private.chat_members(member_id) values(current_setting('igloo.experiment_test')::uuid);
+
 select set_config('request.jwt.claims',json_build_object('sub',current_setting('igloo.experiment_test'),'role','authenticated')::text,true);
 set local role authenticated;
 do $$ declare payload jsonb; begin

@@ -172,6 +172,10 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
       const { api } = await requireMember();
       return unwrap(await api.rpc('get_member_visit_counts'));
     },
+    async canViewObservatory() {
+      const { api } = await requireMember();
+      return Boolean(unwrap(await api.rpc('can_view_observatory')));
+    },
     async getVisitExperiment(days = 14) {
       if (!Number.isInteger(days) || days < 1 || days > 90) throw new Error('조회 기간은 1~90일이어야 합니다.');
       const { api } = await requireMember();

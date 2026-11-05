@@ -256,7 +256,7 @@ test('visit counts RPC supplies daily and cumulative visits without exposing raw
 });
 
 
-test('experiment dashboard validates the window and uses the approved-member RPC', async () => {
+test('experiment dashboard validates the window and uses the authenticated RPC', async () => {
   const member={id:'11111111-1111-4111-8111-111111111111',role:'student',approved:true};const calls=[];
   const api={auth:{getUser:async()=>({data:{user:{id:member.id}}})},from(table){
     if(table==='igloos')return {select:()=>({order:async()=>({data:homes})})};
@@ -267,6 +267,24 @@ test('experiment dashboard validates the window and uses the approved-member RPC
   for(const invalid of [0,91,1.5])await assert.rejects(backend.getVisitExperiment(invalid),/1~90/);
   await backend.getVisitExperiment(30);
   assert.deepEqual(calls,[['get_visit_experiment',{p_days:30}]]);
+});
+
+test('observatory access follows server membership and propagates errors', async () => {
+  const member={id:'11111111-1111-4111-8111-111111111111',role:'student',approved:true};
+  let allowed=false, failure=null;
+  const calls=[];
+  const api={auth:{getUser:async()=>({data:{user:{id:member.id}}})},from(table){
+    if(table==='igloos')return {select:()=>({order:async()=>({data:homes})})};
+    if(table==='members')return {select:()=>({eq:()=>({maybeSingle:async()=>({data:member})})})};
+    throw Error('developer roster must remain private');
+  },rpc:async name=>{calls.push(name);return {data:allowed,error:failure};}};
+  const backend=createVillageBackend({config,loadSdk:async()=>({createClient:()=>api})});
+  assert.equal(await backend.canViewObservatory(),false);
+  allowed=true;
+  assert.equal(await backend.canViewObservatory(),true);
+  failure=new Error('permission lookup failed');
+  await assert.rejects(backend.canViewObservatory(),/permission lookup failed/);
+  assert.deepEqual(calls,Array(3).fill('can_view_observatory'));
 });
 
 
