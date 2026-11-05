@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="480" viewBox="0 0 240 480" fill="none">
+<defs>
+<linearGradient id="metal" x1="0" y1="0" x2="240" y2="110" gradientUnits="userSpaceOnUse"><stop stop-color="#555960"/><stop offset=".06" stop-color="#b5bbc2"/><stop offset=".12" stop-color="#52565d"/><stop offset=".46" stop-color="#17191d"/><stop offset=".8" stop-color="#747b85"/><stop offset=".94" stop-color="#b8c0ca"/><stop offset="1" stop-color="#44484e"/></linearGradient>
+<linearGradient id="edge" x1="120" y1="0" x2="120" y2="480" gradientUnits="userSpaceOnUse"><stop stop-color="white" stop-opacity=".85"/><stop offset=".12" stop-color="#8c939e" stop-opacity=".18"/><stop offset=".5" stop-color="#08090b"/><stop offset=".88" stop-color="#aab1bb" stop-opacity=".38"/><stop offset="1" stop-color="#e4e9ee" stop-opacity=".8"/></linearGradient>
+</defs>
+<rect x="2" y="2" width="236" height="476" rx="42" stroke="url(#metal)" stroke-width="2.8"/>
+<rect x="4.5" y="4.5" width="231" height="471" rx="39.5" stroke="#050607" stroke-width="3"/>
+<rect x="1" y="1" width="238" height="478" rx="43" stroke="url(#edge)"/>
+<path d="M14 22Q22 8 42 7H198Q217 8 226 24" stroke="white" stroke-opacity=".16" stroke-linecap="round"/>
+<path d="M20 460Q28 473 45 473H195Q211 473 220 462" stroke="#d3d9e1" stroke-opacity=".16" stroke-linecap="round"/>
+</svg>

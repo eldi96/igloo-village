@@ -43,9 +43,10 @@
 <div class="fallback" id="fallback">이 브라우저에서는 3D 화면을 띄울 수 없어요.</div>
 <script type="module">
 import * as THREE from 'three';
-import { villageBackend } from './backend/client.js';
+import { villageBackend } from './backend/client.js?v=mailbox-glow';
 import { mountAuth } from './auth-ui.js';
 import { mountChat } from './chat-ui.js';
+import { mountCommentMailbox } from './comment-mailbox.js?v=global-glow';
 import { createQualityControl } from './quality.js';
 
 // DB 연결로 화면 렌더링을 기다리게 하지 않는다. 조작의 저장 연동은 로그인 UI 연결 후 진행한다.
@@ -54,6 +55,7 @@ villageBackend.onStatusChange(status => { document.documentElement.dataset.supab
 villageBackend.connect().catch(error => { console.warn('Supabase 연결을 확인해주세요:', error.message); });
 const auth = mountAuth(villageBackend, { onChange: () => syncVillage() });
 const chat = mountChat(villageBackend);
+const commentMailbox = mountCommentMailbox(villageBackend, { onOpen: projectId => { if (mine) { focusOn(mine); goInside(mine, projectId); } }, onLightChange: () => { renderer.shadowMap.needsUpdate = true; } });
 
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -956,9 +958,10 @@ function fitRipples(ig) {
 // 마을 소품은 별도 파일. 없어도 장면은 그대로 뜬다
 let village = null;
 let santa = null;
-import('./village.js?v=santa-glb')
+import('./village.js?v=champagne-glow')
   .then(m => {
     village = m.addVillage(scene, { places, hub: HUB, heightAt, rng, lighthouse: LIGHTHOUSE, mailPreviewHome: TEST_IGLOO_INDEX });
+    commentMailbox.setWorld(village);
     renderer.shadowMap.needsUpdate = true;
     import('./santa.js?v=idle-motion')
       .then(({ addSanta }) => addSanta(scene, { fireSpot: village.fireSpot, heightAt, height: R * 0.8 }))
@@ -1159,6 +1162,11 @@ canvas.addEventListener('click', e => {
     if (lighthouseRoom.pickAction(pointer) === 'mail') openLighthouseMail();
     return;
   }
+  if (mode === 'map' || mode === 'in') {
+    ray.setFromCamera(pointer, camera);
+    const home = village?.pickMailbox(ray);
+    if (mine && home === mine.home) { commentMailbox.open(); return; }
+  }
   if (mode !== 'map') return;
   const ig = pick();
   if (!ig) return;
@@ -1256,6 +1264,7 @@ async function syncVillage(raiseHome = null) {
     updateCount();
     updateProjectBeams();
     chat.setAccess({ user: auth.user, member: auth.member });
+    commentMailbox.setAccess(auth.member, mine?.home ?? null);
   })();
   try {
     await syncing;
@@ -1297,7 +1306,8 @@ const fadeThrough = change => {
     fade.style.opacity = 0;
   }, 470);
 };
-async function goInside(ig) {
+async function goInside(ig, projectId = null) {
+  commentMailbox.close();
   setBar('들어가는 중이에요');
   if (!ig.house) {
     try {
@@ -1325,7 +1335,7 @@ async function goInside(ig) {
     });
     room = lighthouseRoom;
   } else {
-    if (!iglooRoom) iglooRoom = (await import('./room.js')).createRoom({ canvas, backend: villageBackend, onRoomPublicChange: value => { if (currentRoomIg) currentRoomIg.isPublic = value; } });
+    if (!iglooRoom) iglooRoom = (await import('./room.js')).createRoom({ canvas, backend: villageBackend, onRoomPublicChange: value => { if (currentRoomIg) currentRoomIg.isPublic = value; }, onNotificationsRead: () => commentMailbox.refresh() });
     room = iglooRoom;
   }
   room.setAspect?.(W() / H());
@@ -1335,7 +1345,7 @@ async function goInside(ig) {
     currentRoomIg = ig;
     chat.setHidden(true);
     count.hidden = true;
-    if (room === iglooRoom) room.enter({ home: ig.home, isMine: ig.mine, isPublic: ig.isPublic, ownerName: ig.mine ? auth.member?.display_name : ig.owner });
+    if (room === iglooRoom) room.enter({ home: ig.home, isMine: ig.mine, isPublic: ig.isPublic, projectId, ownerName: ig.mine ? auth.member?.display_name : ig.owner });
     renderPass.scene = room.scene;
     renderPass.camera = room.camera;
     showRoomActions(ig);
@@ -1387,7 +1397,7 @@ function frame() {
   const titleOpacity = mode === 'map' ? 0.66 * (1 - smooth(0.22, 0.62, closeness())) : 0;
   mountainTitle.material.opacity = titleOpacity;
   mountainTitle.visible = titleOpacity > 0.01;
-  if (village) village.update(t);
+  if (village) village.update(t, camera, H());
   if (santa) santa.update(dt);
 
   flags.forEach(f => { f.time.value = t; });

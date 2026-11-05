@@ -139,3 +139,60 @@ test('feedback rejects invalid IDs, blank or oversized comments and unsupported 
   await assert.rejects(backend.setProjectReaction(id, 'invalid', true), /반응/);
   assert.equal(loaded, false);
 });
+
+
+test('reply and deletion reject malformed comment IDs before connecting', async () => {
+  let loaded = false;
+  const backend = createVillageBackend({ config, loadSdk: async () => { loaded = true; throw new Error('unexpected'); } });
+  const id = '11111111-1111-4111-8111-111111111111';
+  await assert.rejects(backend.addProjectComment(id, 'reply', 'invalid'), /답글/);
+  await assert.rejects(backend.deleteProjectComment('invalid'), /댓글/);
+  assert.equal(loaded, false);
+});
+
+test('comment deletion empties text and filters by verified owner and undeleted state', async () => {
+  const member = { id: '11111111-1111-4111-8111-111111111111', role: 'student', approved: true };
+  const commentId = '22222222-2222-4222-8222-222222222222';
+  const calls = [];
+  const query = {
+    eq: (key, value) => { calls.push(['eq', key, value]); return query; },
+    is: (key, value) => { calls.push(['is', key, value]); return query; },
+    select: () => query,
+    single: async () => ({ data: { id: commentId } })
+  };
+  const api = {
+    auth: { getUser: async () => ({ data: { user: { id: member.id } } }) },
+    from(table) {
+      if (table === 'igloos') return { select: () => ({ order: async () => ({ data: homes }) }) };
+      if (table === 'members') return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: member }) }) }) };
+      assert.equal(table, 'project_comments');
+      return { update: payload => { calls.push(['update', payload]); return query; } };
+    }
+  };
+  const backend = createVillageBackend({ config, loadSdk: async () => ({ createClient: () => api }) });
+  await backend.deleteProjectComment(commentId);
+  assert.equal(calls[0][1].body, '');
+  assert.ok(Number.isFinite(Date.parse(calls[0][1].deleted_at)));
+  assert.deepEqual(calls.slice(1), [['eq', 'id', commentId], ['eq', 'member_id', member.id], ['is', 'deleted_at', null]]);
+});
+
+
+test('notification read rejects malformed project and cutoff before connecting', async () => {
+  let loaded = false;
+  const backend = createVillageBackend({ config, loadSdk: async () => { loaded = true; throw new Error('unexpected'); } });
+  await assert.rejects(backend.markCommentNotificationsRead('invalid', new Date().toISOString()), /프로젝트/);
+  await assert.rejects(backend.markCommentNotificationsRead('11111111-1111-4111-8111-111111111111', 'invalid'), /프로젝트/);
+  assert.equal(loaded, false);
+});
+
+
+test('public mailbox glow reads only home IDs without requiring an account', async () => {
+  let rpcCalls = 0;
+  const api = {
+    from: table => { assert.equal(table, 'igloos'); return { select: () => ({ order: async () => ({ data: homes }) }) }; },
+    rpc: async name => { assert.equal(name, 'get_unread_mailbox_homes'); rpcCalls++; return { data: [{ igloo_id: 22 }] }; }
+  };
+  const backend = createVillageBackend({ config, loadSdk: async () => ({ createClient: () => api }) });
+  assert.deepEqual(await backend.getUnreadMailboxHomes(), [22]);
+  assert.equal(rpcCalls, 1);
+});

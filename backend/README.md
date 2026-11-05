@@ -47,3 +47,28 @@ DB 설정이 끝났다는 이유로 테스트용 수강생이나 화면의 소�
 2026-11-05 add_manual_project_upload 마이그레이션으로 원격 적용 완료. 이미 적용된 DB에 재실행하지 않는다.
 `schema.sql`에는 같은 변경을 반영했다. 기존 DB에 초기 스키마 전체를 재실행하지 않는다.
 이미지는 프로젝트 조회 권한이 있는 계정에게 1시간 유효한 서명 URL로 제공한다.
+
+
+## 댓글 답글·삭제 (2026-11-05)
+
+- `comment-replies.sql`: 기존 DB용 증분 변경. parent_id·deleted_at, 본인 삭제 RLS·열 권한, 한 단계·동일 프로젝트 검증 트리거 추가. Supabase 원격 적용 완료. 초기 schema.sql을 기존 DB에 재실행하지 않는다.
+- `verify-comment-replies.sql`: 빈 이글루 하나를 임시 사용해 댓글·답글·타인 삭제 차단·다른 프로젝트 연결 차단·2단계 답글 차단·비공개 접근 차단을 검증하고 전부 롤백한다.
+- 댓글 삭제는 body를 빈 문자열로 지우고 deleted_at을 기록한다. 본문 복구 기능은 없으며 원댓글 행과 기존 답글만 유지한다. 클라이언트는 댓글 임의 수정·작성자 변경·물리 삭제 권한이 없다.
+- 원격 적용 이력: add_comment_replies_and_soft_delete, fix_reply_parent_read_under_rls. 후자는 부모 조회의 불필요한 행 잠금을 제거한 수정이며 최종 파일에는 수정된 정의를 담았다.
+- 기존 인증 점검 안내(이번 기능과 별개): check_invite / join_with_invite의 의도된 SECURITY DEFINER 노출과 유출 비밀번호 보호 비활성 경고. 이번 작업에서는 인증 설정을 바꾸지 않았다. [함수 권한 점검](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable), [인증된 사용자 함수 권한 점검](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable), [비밀번호 보호](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
+
+
+## 댓글 우편함 알림 (2026-11-05)
+
+- `comment-notifications.sql` 원격 적용 완료: add_project_comment_notifications. 기존 mail_messages는 변경하지 않았다. 과거 댓글에 알림을 소급 생성하지 않는다.
+- comment_notifications: id, recipient_id, project_id, comment_id, created_at, read_at. 수신자 본인이 현재 소유한 프로젝트의 알림만 SELECT·read_at UPDATE 가능. 클라이언트 INSERT·DELETE 금지.
+- private.notify_project_comment: 공개 API에서 실행할 수 없는 트리거 전용 SECURITY DEFINER 함수. 타인이 댓글·답글을 등록하면 프로젝트 소유자에게 알림 생성. 본인 작성 제외. 댓글 삭제 처리 시 해당 알림 정리. 프로젝트·회원·댓글 물리 삭제 시 FK로 정리.
+- Realtime에 comment_notifications 추가. 로그인 계정 변경 시 구독 해제·알림 초기화, 재연결·탭 복귀·30초 주기 조회로 재동기화. 내 우편함만 점등하며 방문자에게 남의 미확인 상태를 공개하지 않음.
+- 우편함 클릭 → 새 댓글 프로젝트 목록 → 프로젝트 카드 → 피드백 정상 로딩 뒤 해당 프로젝트의 열람 시작 시각 이전 알림을 읽음 처리. 다른 프로젝트의 알림은 유지. 목록은 최신 미확인 100건까지 표시하며 추가 알림은 읽음 후 다시 조회.
+- `verify-comment-notifications.sql`은 임시 계정·빈 방을 트랜잭션 안에서만 사용하고 모두 롤백한다. 타인 수신함 읽기·갱신·알림 직접 생성 차단, 본인 작성 제외, 답글 알림, 읽음, 삭제 알림 정리 검증 완료.
+- DB 관리자가 작업 중인 daily_visits 테이블의 RLS 정책 없음 INFO가 점검에 표시됨. 이번 작업에서 생성·변경하지 않음. [RLS 점검 설명](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy).
+
+
+### 전체 마을에서 점등 보기 (추가 적용)
+
+기존의 본인 화면만 점등하던 동작을 변경했다. get_unread_mailbox_homes RPC로 이글루 ID만 모두에게 공개하고 알림 본문 권한은 유지한다. mailbox-glow.sql 원격 적용 완료. 전체 화면은 10초 주기로 갱신하고, 현재 화면의 댓글 작성·삭제와 본인 읽음 처리는 즉시 재조회한다. 추가 테이블·컬럼·RLS 변경 없음. 의도된 공개 SECURITY DEFINER 함수: [공개 함수 권한 점검](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable).
