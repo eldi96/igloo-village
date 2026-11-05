@@ -112,4 +112,25 @@ do $$ begin
     raise exception 'FAIL: comment reply/delete column grants';
   end if;
 end $$;
+do $$ begin
+  if has_function_privilege('anon','public.get_visit_experiment(integer)','EXECUTE')
+    or not has_function_privilege('authenticated','public.get_visit_experiment(integer)','EXECUTE')
+    or has_table_privilege('authenticated','private.visit_exclusions','SELECT') then
+    raise exception 'FAIL: experiment read grants';
+  end if;
+end $$;
+do $$ begin
+  if has_column_privilege('authenticated','public.members','card_theme','UPDATE')
+    or has_column_privilege('authenticated','public.members','card_theme_unlocked_at','UPDATE')
+    or has_function_privilege('anon','public.set_card_theme(text)','EXECUTE') then
+    raise exception 'FAIL: card theme reward grants';
+  end if;
+end $$;
+do $$ begin
+  if has_column_privilege('authenticated','public.igloos','exterior_light','UPDATE')
+    or has_column_privilege('authenticated','public.members','exterior_light_unlocked_at','UPDATE')
+    or has_function_privilege('anon','public.set_exterior_light(text)','EXECUTE') then
+    raise exception 'FAIL: exterior light reward grants';
+  end if;
+end $$;
 rollback;

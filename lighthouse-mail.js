@@ -30,26 +30,26 @@ export function createLighthouseMail({ getHomes, hub, lighthouse, onOpen, onClos
     .lmail-legend { display:flex; flex-wrap:wrap; gap:16px; align-items:center; margin-top:13px; color:var(--muted); font-size:10px; }
     .lmail-dot { width:7px; height:7px; display:inline-block; border-radius:50%; background:#48675c; margin-right:5px; }
     .lmail-dot.empty { background:#a6b3a5; }
-    .lmail-empty { margin-top:22px; padding-top:16px; border-top:1px solid var(--line); }
+    .lmail-empty { margin-top:24px; padding-top:16px; border-top:1px solid var(--line); }
     .lmail-empty p { color:var(--muted); font-size:12px; margin-bottom:7px; }
     .lmail-sample-note { color:#8a6f3b!important; }
-    .lmail-form-side { padding:24px 28px; min-width:0; }
+    .lmail-form-side { padding:24px; min-width:0; }
     .lmail-recipients { margin-bottom:22px; padding-bottom:18px; border-bottom:1px solid var(--line); }
     .lmail-count { margin-top:5px; font-size:19px; font-weight:550; letter-spacing:-.03em; }
     .lmail-names { min-height:18px; color:var(--muted); font-size:11px; overflow-wrap:anywhere; }
-    .lmail label { display:block; margin:16px 0 7px; font-size:12px; font-weight:550; }
-    .lmail textarea,.lmail input { display:block; width:100%; border:1px solid #c7cdc2; border-radius:9px; padding:11px 12px; color:var(--ink); background:#f8f5ed; box-shadow:inset 0 1px 2px #263a2b05; }
+    .lmail label { display:block; margin:16px 0 8px; font-size:12px; font-weight:550; }
+    .lmail textarea,.lmail input { display:block; width:100%; border:1px solid #c7cdc2; border-radius:9px; padding:12px; color:var(--ink); background:#f8f5ed; box-shadow:inset 0 1px 2px #263a2b05; }
     .lmail textarea { resize:vertical; min-height:128px; max-height:280px; line-height:1.7; }
     .lmail input::placeholder,.lmail textarea::placeholder { color:#969b8e; }
-    .lmail-form-foot { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-top:22px; }
+    .lmail-form-foot { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-top:24px; }
     .lmail-primary { min-height:40px; border:1px solid #304a43; border-radius:9px; background:#304a43; color:#f5f3e9; padding:9px 15px; white-space:nowrap; }
     .lmail-small { max-width:145px; color:var(--muted); font-size:10px; line-height:1.6; }
     .lmail-review h3 { margin:0 0 10px; font-size:18px; font-weight:550; }
-    .lmail-review-text { margin:18px 0!important; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .lmail-review-text { margin:16px 0!important; white-space:pre-wrap; overflow-wrap:anywhere; }
     .lmail-review a { color:#526e60; overflow-wrap:anywhere; }
-    .lmail-review-note { margin:20px 0!important; padding:12px; border:1px solid var(--line); border-radius:8px; color:var(--muted); font-size:12px; }
+    .lmail-review-note { margin:24px 0!important; padding:12px; border:1px solid var(--line); border-radius:8px; color:var(--muted); font-size:12px; }
     .lmail [hidden] { display:none!important; }
-    @media(max-width:760px) { .lmail { width:calc(100vw - 24px); max-height:calc(100dvh - 24px); border-radius:16px; } .lmail-head { padding:20px; } .lmail h2 { font-size:22px; } .lmail-body { grid-template-columns:1fr; } .lmail-map-side { border-right:0; border-bottom:1px solid var(--line); padding:20px; } .lmail-form-side { padding:20px; } .lmail-empty { margin-top:14px; } }
+    @media(max-width:760px) { .lmail { width:calc(100vw - 24px); max-height:calc(100dvh - 24px); border-radius:16px; } .lmail-head { padding:16px; } .lmail h2 { font-size:22px; } .lmail-body { grid-template-columns:1fr; } .lmail-map-side { border-right:0; border-bottom:1px solid var(--line); padding:16px; } .lmail-form-side { padding:16px; } .lmail-empty { margin-top:14px; } }
     @media(hover:hover) { .lmail-home:not(:disabled):hover { border-color:#a3b0a0; background:#cad5c6; } .lmail-home[aria-pressed="true"]:hover { background:#3b5c52; } .lmail-primary:not(:disabled):hover { background:#3c5c50; } }
     @media(prefers-reduced-motion:no-preference) { .lmail[open] { animation:lmail-in 180ms cubic-bezier(.16,1,.3,1); } .lmail button { transition:background-color 120ms ease,transform 120ms ease; } .lmail button:active:not(:disabled) { transform:scale(.98); } .lmail-home:active:not(:disabled) { transform:translate(-50%,-50%) scale(.96); } @keyframes lmail-in { from { opacity:0; translate:0 6px; } to { opacity:1; translate:0 0; } } }
   `;

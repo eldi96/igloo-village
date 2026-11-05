@@ -1,0 +1,17 @@
+// 저장값 blue는 기존 선택 호환용이며 화면에서는 라벤더 보라로 표시한다.
+// 기존 테마 선택창의 투명 UI를 사용한다. 실제 광원이나 내부 장면은 변경하지 않는다.
+export function mountExteriorLight(root,backend,{onChange=()=>{}}={}) {
+  const control=document.createElement('div');control.className='card-theme-control';control.hidden=true;
+  control.innerHTML='<button type="button" class="card-theme-trigger" aria-expanded="false"><span>조명 변경</span><small></small></button><section class="card-theme-picker" aria-label="조명 변경 선택" hidden><header><h2>조명 변경</h2></header><div class="card-theme-options" style="grid-template-columns:repeat(2,32px)"><button type="button" data-light="warm" aria-label="기본 주황 불빛" title="기본 주황"><i aria-hidden="true" style="background:linear-gradient(135deg,#f1d0a0aa,#b0814744)"></i></button><button type="button" data-light="blue" aria-label="라벤더 보라 불빛" title="라벤더 보라"><i aria-hidden="true" style="background:linear-gradient(135deg,#ddc0ffaa,#a179c844)"></i></button></div><p role="status" hidden></p></section>';
+  root.append(control);
+  const trigger=control.querySelector('.card-theme-trigger'),panel=control.querySelector('section'),status=control.querySelector('p'),buttons=[...control.querySelectorAll('[data-light]')];
+  let active=false,color='warm',unlocked=false,loaded=false,busy=false,generation=0,request=0;
+  function paint(){control.hidden=!active||!loaded||!unlocked;trigger.querySelector('small').textContent=!loaded?'확인 중':unlocked?'선택 가능':'프로젝트 2개로 해금';buttons.forEach(b=>{b.disabled=!loaded||busy||(b.dataset.light==='blue'&&!unlocked);b.setAttribute('aria-pressed',String(b.dataset.light===color));});}
+  function close(focus=false){panel.hidden=true;trigger.setAttribute('aria-expanded','false');if(focus)trigger.focus();}
+  async function refresh(){if(!active)return;const token=generation,seq=++request;try{const data=await backend.getExteriorLight();if(!active||generation!==token||request!==seq)return;color=data.color==='blue'?'blue':'warm';unlocked=Boolean(data.unlocked);loaded=true;status.hidden=true;paint();}catch{if(active&&generation===token&&request===seq){loaded=false;paint();status.textContent='불빛 설정을 불러오지 못했어요. 다시 열어 주세요.';status.hidden=false;}}}
+  trigger.onclick=()=>{panel.hidden=!panel.hidden;trigger.setAttribute('aria-expanded',String(!panel.hidden));if(!panel.hidden){root.dispatchEvent(new CustomEvent('reward-picker-open',{detail:control}));status.hidden=true;if(!loaded)refresh();buttons.find(b=>!b.disabled)?.focus();}};
+  root.addEventListener('reward-picker-open',event=>{if(event.detail!==control)close();});
+  control.addEventListener('keydown',e=>{if(e.key==='Escape'&&!panel.hidden){e.stopPropagation();close(true);}});
+  buttons.forEach(button=>button.onclick=async()=>{const next=button.dataset.light;if(!active||busy||!loaded||next===color||(!unlocked&&next==='blue'))return;const token=generation;busy=true;request++;status.hidden=true;paint();try{const saved=await backend.setExteriorLight(next);if(token!==generation||!active)return;color=saved.color;unlocked=Boolean(saved.unlocked);onChange(color);}catch{if(token===generation){status.textContent='저장하지 못했어요. 다시 선택해 주세요.';status.hidden=false;}}finally{if(token===generation){busy=false;paint();button.focus({preventScroll:true});}}});
+  return {enter(mine){generation++;request++;active=Boolean(mine);color='warm';unlocked=false;loaded=false;busy=false;close();status.hidden=true;paint();if(active)refresh();},refresh,leave(){generation++;request++;active=false;busy=false;close();paint();}};
+}

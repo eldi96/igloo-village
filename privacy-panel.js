@@ -10,7 +10,7 @@ export function mountPrivacyPanel(root, backend, { onRoomChange }) {
     button.querySelector('.igloo-switch-label').textContent = opened ? 'ON' : 'OFF';
     button.disabled = busy;
   }
-  function describe() { message.textContent = opened ? '이글루가 열렸습니다.' : '이글루가 닫혔습니다. 외부인이 들어오지 못합니다.'; }
+  function describe() { message.textContent = opened ? '이글루가 열렸습니다.' : '이글루가 닫혔습니다.\n외부인이 들어오지 못합니다.'; }
   button.onclick = async () => {
     if (busy || home === null) return;
     const id = home, token = generation, next = !opened;
