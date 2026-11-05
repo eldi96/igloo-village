@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
-// 우편함 외형과 도착 표시 미리보기. 실제 발송·읽음·권한 기능은 아직 연결하지 않는다.
-export function addMailboxes(scene, { places, heightAt, previewHomeIndex = null }) {
+// 우편함 외형. 읽지 않은 댓글 알림이 있는 우편함은 모든 화면에서 점등한다.
+export function addMailboxes(scene, { places, heightAt }) {
   const root = new THREE.Group();
   root.name = 'mailboxes';
   const bodyMat = new THREE.MeshStandardMaterial({ color: 0x33494c, metalness: 0.55, roughness: 0.58 });
@@ -14,23 +14,35 @@ export function addMailboxes(scene, { places, heightAt, previewHomeIndex = null 
   const box = new RoundedBoxGeometry(1, 1, 1, 1, 0.08);
   // 투입구, 손잡이처럼 작은 부품은 둥근 모서리가 보이지 않으니 일반 상자로 그린다.
   const smallBox = new THREE.BoxGeometry(1, 1, 1);
-  const mailLightMat = new THREE.MeshBasicMaterial({ color: 0xe9b570, toneMapped: false });
+  const mailLightMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.65, 1.4, .95), toneMapped: false });
   const glowCanvas = document.createElement('canvas');
   glowCanvas.width = 128; glowCanvas.height = 64;
   const glowContext = glowCanvas.getContext('2d');
   const gradient = glowContext.createRadialGradient(64, 32, 0, 64, 32, 64);
-  gradient.addColorStop(0, 'rgba(255,205,135,.42)');
-  gradient.addColorStop(0.35, 'rgba(255,184,100,.15)');
-  gradient.addColorStop(1, 'rgba(255,184,100,0)');
+  gradient.addColorStop(0, 'rgba(255,242,206,.68)');
+  gradient.addColorStop(0.35, 'rgba(255,220,161,.3)');
+  gradient.addColorStop(1, 'rgba(255,220,161,0)');
   glowContext.fillStyle = gradient;
   glowContext.fillRect(0, 0, 128, 64);
   const glowMap = new THREE.CanvasTexture(glowCanvas);
   glowMap.colorSpace = THREE.SRGBColorSpace;
   const mailGlowMat = new THREE.MeshBasicMaterial({
-    map: glowMap, transparent: true, depthWrite: false, toneMapped: false,
+    map: glowMap, transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false,
     blending: THREE.AdditiveBlending
   });
-  const glowGeometry = new THREE.PlaneGeometry(0.62, 0.16);
+  const glowGeometry = new THREE.PlaneGeometry(0.72, 0.34);
+  // 멀리서는 작은 투입구 대신 화면을 향하는 부드러운 빛을 쓴다.
+  const haloCanvas = document.createElement('canvas'); haloCanvas.width = haloCanvas.height = 128;
+  const haloContext = haloCanvas.getContext('2d');
+  const haloGradient = haloContext.createRadialGradient(64, 64, 0, 64, 64, 64);
+  haloGradient.addColorStop(0, 'rgba(255,250,232,.96)');
+  haloGradient.addColorStop(.1, 'rgba(255,245,218,.88)');
+  haloGradient.addColorStop(.3, 'rgba(255,230,177,.44)');
+  haloGradient.addColorStop(.65, 'rgba(255,217,149,.14)');
+  haloGradient.addColorStop(1, 'rgba(255,196,119,0)');
+  haloContext.fillStyle = haloGradient; haloContext.fillRect(0, 0, 128, 128);
+  const haloMap = new THREE.CanvasTexture(haloCanvas); haloMap.colorSpace = THREE.SRGBColorSpace;
+
 
   const arch = (radius, sideHeight) => {
     const shape = new THREE.Shape();
@@ -59,7 +71,7 @@ export function addMailboxes(scene, { places, heightAt, previewHomeIndex = null 
   const snowCap = extrude(capShape, 0.61, 0.009);
   snowCap.translate(0, 0, -0.305);
 
-  const batches = new Map();
+  const batches = new Map(), indicators = [], meshes = new Map();
   const transform = new THREE.Object3D();
   const part = (home, origin, geometry, material, x, y, z, sx = 1, sy = 1, sz = 1) => {
     const c = Math.cos(home.yaw), s = Math.sin(home.yaw);
@@ -71,7 +83,11 @@ export function addMailboxes(scene, { places, heightAt, previewHomeIndex = null 
     if (!byMaterial) batches.set(geometry, byMaterial = new Map());
     let matrices = byMaterial.get(material);
     if (!matrices) byMaterial.set(material, matrices = []);
-    matrices.push(transform.matrix.clone());
+    const matrix = transform.matrix.clone(), index = matrices.length;
+    matrices.push(matrix);
+    if (!matrices.homes) matrices.homes = [];
+    matrices.homes.push(places.indexOf(home));
+    return { geometry, material, index, matrix };
   };
   for (const [homeIndex, home] of places.entries()) {
     // 입구 왼쪽에 두어 진입로, 오른쪽 깃발, 돔의 눈더미를 피한다.
@@ -90,18 +106,23 @@ export function addMailboxes(scene, { places, heightAt, previewHomeIndex = null 
     part(home, origin, smallBox, seamMat, 0, 1.101, 0.331, 0.28, 0.025, 0.008);
     part(home, origin, smallBox, bodyMat, 0, 1.125, 0.341, 0.32, 0.018, 0.045);
     part(home, origin, smallBox, brassMat, 0, 0.956, 0.352, 0.095, 0.026, 0.036);
-    // 알림 표시의 경첩과 레버. 테스트 대상으로 지정한 한 곳만 올린다.
-    const unread = homeIndex === previewHomeIndex;
+    // 같은 인스턴스의 행렬만 바꿔 알림 표시를 올리고 투입구를 밝힌다.
     part(home, origin, smallBox, bodyMat, 0.333, 1.015, 0, 0.042, 0.07, 0.07);
-    if (unread) {
-      part(home, origin, smallBox, brassMat, 0.356, 1.18, 0, 0.025, 0.33, 0.03);
-      part(home, origin, smallBox, brassMat, 0.356, 1.31, 0.05, 0.028, 0.12, 0.14);
-      part(home, origin, smallBox, mailLightMat, 0, 1.101, 0.339, 0.274, 0.02, 0.009);
-      part(home, origin, glowGeometry, mailGlowMat, 0, 1.101, 0.364);
-    } else {
-      part(home, origin, smallBox, brassMat, 0.356, 1.015, 0.165, 0.025, 0.03, 0.33);
-      part(home, origin, smallBox, brassMat, 0.356, 0.965, 0.295, 0.028, 0.14, 0.12);
-    }
+    const on = [
+      part(home, origin, smallBox, brassMat, 0.356, 1.18, 0, 0.025, 0.33, 0.03),
+      part(home, origin, smallBox, brassMat, 0.356, 1.31, 0.05, 0.028, 0.12, 0.14),
+      part(home, origin, smallBox, mailLightMat, 0, 1.101, 0.339, 0.274, 0.02, 0.009),
+      part(home, origin, glowGeometry, mailGlowMat, 0, 1.101, 0.364)
+    ];
+    const off = [
+      part(home, origin, smallBox, brassMat, 0.356, 1.015, 0.165, 0.025, 0.03, 0.33),
+      part(home, origin, smallBox, brassMat, 0.356, 0.965, 0.295, 0.028, 0.14, 0.12)
+    ];
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloMap, color: new THREE.Color(1.8, 1.55, 1.1), transparent: true, opacity: 0, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending }));
+    halo.position.set(origin.x, origin.y + 1.12, origin.z);
+    halo.visible = false; halo.raycast = () => {};
+    root.add(halo);
+    indicators.push({ homeIndex, on, off, halo, anchor: halo.position.clone(), unread: null });
 
     for (const side of [-1, 1]) {
       part(home, origin, smallBox, brassMat, side * 0.19, 0.846, 0.334, 0.036, 0.018, 0.017);
@@ -113,14 +134,65 @@ export function addMailboxes(scene, { places, heightAt, previewHomeIndex = null 
       const mesh = new THREE.InstancedMesh(geometry, material, matrices.length);
       matrices.forEach((matrix, i) => mesh.setMatrixAt(i, matrix));
       mesh.instanceMatrix.needsUpdate = true;
+      if (material === mailLightMat || material === mailGlowMat) {
+        for (let i = 0; i < matrices.length; i++) mesh.setColorAt(i, new THREE.Color(1, 1, 1));
+      }
       mesh.castShadow = material !== mailLightMat && material !== mailGlowMat;
       mesh.receiveShadow = true;
       mesh.computeBoundingSphere();
+      mesh.userData.mailboxHomes = matrices.homes;
+      if (!meshes.has(geometry)) meshes.set(geometry, new Map());
+      meshes.get(geometry).set(material, mesh);
       root.add(mesh);
     }
   }
   root.userData.mailboxCount = places.length;
-  root.userData.previewUnreadHomes = Number.isInteger(previewHomeIndex) && places[previewHomeIndex] ? [previewHomeIndex] : [];
+  const hidden = new THREE.Matrix4().makeScale(0, 0, 0);
+  root.userData.setUnreadHomes = homes => {
+    const unread = new Set(homes);
+    for (const state of indicators) {
+      const enabled = unread.has(state.homeIndex);
+      if (state.unread === enabled) continue;
+      state.unread = enabled;
+      if (!enabled) state.halo.visible = false;
+      for (const [refs, visible] of [[state.on, enabled], [state.off, !enabled]]) {
+        for (const ref of refs) {
+          const mesh = meshes.get(ref.geometry).get(ref.material);
+          mesh.setMatrixAt(ref.index, visible ? ref.matrix : hidden);
+          mesh.instanceMatrix.needsUpdate = true;
+        }
+      }
+    }
+  };
+  const lightColor = new THREE.Color(), towardCamera = new THREE.Vector3();
+  root.userData.update = (camera, viewportHeight) => {
+    const pixels = Math.max(1, viewportHeight);
+    for (const state of indicators) {
+      if (!state.unread) continue;
+      towardCamera.copy(camera.position).sub(state.anchor);
+      const distance = towardCamera.length();
+      // 빛의 중심을 우편함 표면 앞으로 옮겨 본체에 가려지지 않게 한다.
+      state.halo.position.copy(state.anchor).addScaledVector(towardCamera.normalize(), .45);
+      const far = THREE.MathUtils.smoothstep(distance, 14, 38);
+      // 약 30px의 부드러운 빛을 유지하며 시간에 따른 깜빡임은 넣지 않는다.
+      const worldPerPixel = 2 * distance * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / pixels;
+      state.halo.scale.setScalar(Math.max(1, 30 * worldPerPixel));
+      state.halo.material.opacity = far * .95;
+      state.halo.visible = far > .001;
+      lightColor.setRGB(1 - far, 1 - far, 1 - far);
+      for (let i = 2; i < state.on.length; i++) {
+        const ref = state.on[i];
+        const mesh = meshes.get(ref.geometry).get(ref.material);
+        mesh.setColorAt(ref.index, lightColor);
+        mesh.instanceColor.needsUpdate = true;
+      }
+    }
+  };
+  root.userData.pickHome = ray => {
+    const hit = ray.intersectObjects(root.children.filter(mesh => mesh.userData.mailboxHomes), false)[0];
+    return hit ? hit.object.userData.mailboxHomes[hit.instanceId] : null;
+  };
+  root.userData.setUnreadHomes([]);
   scene.add(root);
   return root;
 }

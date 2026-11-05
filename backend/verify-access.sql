@@ -103,4 +103,13 @@ do $$ begin
   if has_table_privilege('anon', 'public.project_comments', 'SELECT') or has_table_privilege('anon', 'public.project_reactions', 'INSERT') then raise exception 'FAIL: anonymous feedback grants'; end if;
 end $$;
 select 'PASS: map grants, unique claims, role protection, private/public projects, instructor access, atomic delivery, inbox isolation, read markers' as security_verification;
+-- 상세 기능 검증은 verify-comment-replies.sql의 독립 롤백 시험으로 실행한다.
+do $$ begin
+  if not has_column_privilege('authenticated', 'public.project_comments', 'parent_id', 'INSERT')
+    or not has_column_privilege('authenticated', 'public.project_comments', 'deleted_at', 'UPDATE')
+    or has_column_privilege('authenticated', 'public.project_comments', 'member_id', 'UPDATE')
+    or has_table_privilege('authenticated', 'public.project_comments', 'DELETE') then
+    raise exception 'FAIL: comment reply/delete column grants';
+  end if;
+end $$;
 rollback;

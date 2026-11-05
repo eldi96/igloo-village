@@ -139,3 +139,118 @@ test('feedback rejects invalid IDs, blank or oversized comments and unsupported 
   await assert.rejects(backend.setProjectReaction(id, 'invalid', true), /반응/);
   assert.equal(loaded, false);
 });
+
+
+test('reply and deletion reject malformed comment IDs before connecting', async () => {
+  let loaded = false;
+  const backend = createVillageBackend({ config, loadSdk: async () => { loaded = true; throw new Error('unexpected'); } });
+  const id = '11111111-1111-4111-8111-111111111111';
+  await assert.rejects(backend.addProjectComment(id, 'reply', 'invalid'), /답글/);
+  await assert.rejects(backend.deleteProjectComment('invalid'), /댓글/);
+  assert.equal(loaded, false);
+});
+
+test('comment deletion empties text and filters by verified owner and undeleted state', async () => {
+  const member = { id: '11111111-1111-4111-8111-111111111111', role: 'student', approved: true };
+  const commentId = '22222222-2222-4222-8222-222222222222';
+  const calls = [];
+  const query = {
+    eq: (key, value) => { calls.push(['eq', key, value]); return query; },
+    is: (key, value) => { calls.push(['is', key, value]); return query; },
+    select: () => query,
+    single: async () => ({ data: { id: commentId } })
+  };
+  const api = {
+    auth: { getUser: async () => ({ data: { user: { id: member.id } } }) },
+    from(table) {
+      if (table === 'igloos') return { select: () => ({ order: async () => ({ data: homes }) }) };
+      if (table === 'members') return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: member }) }) }) };
+      assert.equal(table, 'project_comments');
+      return { update: payload => { calls.push(['update', payload]); return query; } };
+    }
+  };
+  const backend = createVillageBackend({ config, loadSdk: async () => ({ createClient: () => api }) });
+  await backend.deleteProjectComment(commentId);
+  assert.equal(calls[0][1].body, '');
+  assert.ok(Number.isFinite(Date.parse(calls[0][1].deleted_at)));
+  assert.deepEqual(calls.slice(1), [['eq', 'id', commentId], ['eq', 'member_id', member.id], ['is', 'deleted_at', null]]);
+});
+
+
+test('notification read rejects malformed project and cutoff before connecting', async () => {
+  let loaded = false;
+  const backend = createVillageBackend({ config, loadSdk: async () => { loaded = true; throw new Error('unexpected'); } });
+  await assert.rejects(backend.markCommentNotificationsRead('invalid', new Date().toISOString()), /프로젝트/);
+  await assert.rejects(backend.markCommentNotificationsRead('11111111-1111-4111-8111-111111111111', 'invalid'), /프로젝트/);
+  assert.equal(loaded, false);
+});
+
+
+test('public mailbox glow reads only home IDs without requiring an account', async () => {
+  let rpcCalls = 0;
+  const api = {
+    from: table => { assert.equal(table, 'igloos'); return { select: () => ({ order: async () => ({ data: homes }) }) }; },
+    rpc: async name => { assert.equal(name, 'get_unread_mailbox_homes'); rpcCalls++; return { data: [{ igloo_id: 22 }] }; }
+  };
+  const backend = createVillageBackend({ config, loadSdk: async () => ({ createClient: () => api }) });
+  assert.deepEqual(await backend.getUnreadMailboxHomes(), [22]);
+  assert.equal(rpcCalls, 1);
+});
+
+test('visit analytics checks its window and rejects unauthenticated callers', async () => {
+  const sdk = mockSdk();
+  const backend = createVillageBackend({ config, loadSdk: sdk.loadSdk });
+  await assert.rejects(backend.getVisitTrend(0), /1~90/);
+  await assert.rejects(backend.getVisitTrend(91), /1~90/);
+  await assert.rejects(backend.getVisitTrend(1.5), /1~90/);
+  await assert.rejects(backend.recordVisit(), /로그인/);
+});
+
+test('visit analytics uses approved member RPCs without reading raw visit rows', async () => {
+  const member = { id: '11111111-1111-4111-8111-111111111111', role: 'student', approved: true };
+  const calls = [];
+  const client = {
+    from(table) {
+      if (table === 'igloos') return { select: () => ({ order: async () => ({ data: homes, error: null }) }) };
+      if (table === 'members') return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: member, error: null }) }) }) };
+      throw new Error(`unexpected direct table read: ${table}`);
+    },
+    auth: { getUser: async () => ({ data: { user: { id: member.id } }, error: null }) },
+    rpc: async (name, args) => {
+      calls.push([name, args ?? null]);
+      return { data: name === 'record_visit' ? true : [{ visit_date: '2026-11-05', baseline_total: 5, baseline_active: 3, baseline_rate: 60 }], error: null };
+    }
+  };
+  const backend = createVillageBackend({ config, loadSdk: async () => ({ createClient: () => client }) });
+  assert.equal(await backend.recordVisit(), true);
+  const trend = await backend.getVisitTrend(14);
+  assert.equal(trend[0].baseline_rate, 60);
+  assert.deepEqual(calls, [['record_visit', null], ['get_visit_trend', { p_days: 14 }]]);
+});
+
+
+test('visit counts RPC supplies daily and cumulative visits without exposing raw visit rows', async () => {
+  const member = { id: '11111111-1111-4111-8111-111111111111', role: 'student', approved: true };
+  const calls = [];
+  const api = {
+    from(table) {
+      if (table === 'igloos') return { select: () => ({ order: async () => ({ data: homes, error: null }) }) };
+      if (table === 'members') return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: member, error: null }) }) }) };
+      throw new Error(`unexpected raw table access: ${table}`);
+    },
+    auth: { getUser: async () => ({ data: { user: { id: member.id } }, error: null }) },
+    rpc: async (name, args) => {
+      calls.push([name, args]);
+      if (name !== 'get_visit_counts') throw new Error(`unexpected RPC: ${name}`);
+      return { data: [{ visit_date: '2026-11-05', baseline_daily_visits: 5, total_daily_visits: 5,
+        baseline_cumulative_visits: 5, total_cumulative_visits: 5,
+        baseline_active: 5, total_active: 5, baseline_participants: 5, total_participants: 5 }], error: null };
+    }
+  };
+  const backend = createVillageBackend({ config, loadSdk: async () => ({ createClient: () => api }) });
+  for (const invalid of [0, 91, 1.5]) await assert.rejects(backend.getVisitCounts(invalid), /1~90/);
+  const counts = await backend.getVisitCounts(14);
+  assert.equal(counts[0].baseline_cumulative_visits, 5);
+  assert.equal(counts[0].total_daily_visits, 5);
+  assert.deepEqual(calls, [['get_visit_counts', { p_days: 14 }]]);
+});

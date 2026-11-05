@@ -1,5 +1,5 @@
 // 프로젝트별 댓글과 반응. 다른 카드로 바뀐 뒤 도착한 응답은 표시하지 않는다.
-export function mountProjectFeedback(root, backend) {
+export function mountProjectFeedback(root, backend, { onViewed = () => {} } = {}) {
   root.innerHTML = `<div class="feedback-head"><h3>피드백</h3><div class="feedback-reactions" aria-label="프로젝트 반응"><button type="button" data-emoji="👍" aria-label="좋아요" aria-pressed="false" disabled>👍 <span>0</span></button><button type="button" data-emoji="❤️" aria-label="하트" aria-pressed="false" disabled>❤️ <span>0</span></button></div></div><p class="feedback-status" role="status"></p><ul class="feedback-list" aria-label="프로젝트 댓글"></ul><form class="feedback-form"><label>댓글 남기기<textarea name="comment" maxlength="1000" rows="3" required placeholder="사용해 본 소감이나 개선 아이디어를 남겨 주세요."></textarea></label><div class="feedback-submit"><span>최대 1,000자</span><button type="submit" class="room-btn">댓글 등록</button></div></form>`;
   const list = root.querySelector('.feedback-list');
   const status = root.querySelector('.feedback-status');
@@ -10,6 +10,7 @@ export function mountProjectFeedback(root, backend) {
   let projectId = null, generation = 0, userId = null, reactions = [], busy = false, reactionBusy = new Set(), loading = false;
   function controls() {
     input.disabled = submit.disabled = !userId || busy || loading;
+    list.querySelectorAll('button, textarea').forEach(control => { control.disabled = !userId || busy || loading; });
     buttons.forEach(button => { button.disabled = !userId || busy || loading;
       button.setAttribute('aria-busy', String(reactionBusy.has(button.dataset.emoji))); });
   }
@@ -20,16 +21,42 @@ export function mountProjectFeedback(root, backend) {
       button.setAttribute('aria-pressed', String(rows.some(row => row.member_id === userId)));
     }
   }
+  const expanded = new Set();
+  let replyTarget = null;
+  const drafts = new Map();
+  function action(label, handler) {
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'feedback-text-action';
+    button.textContent = label;
+    button.onclick = handler;
+    return button;
+  }
+  async function writeComment(body, parentId, token) {
+    const id = projectId;
+    let saved = false;
+    try {
+      await backend.addProjectComment(id, body, parentId);
+      saved = true;
+      if (token !== generation) return;
+      if (parentId) { drafts.delete(parentId); expanded.add(parentId); replyTarget = null; }
+      else input.value = '';
+      await refresh(id, token);
+      if (token === generation) status.textContent = parentId ? '답글을 등록했어요.' : '댓글을 등록했어요.';
+    } catch (error) {
+      if (token === generation) status.textContent = saved ? '저장됐지만 목록을 불러오지 못했어요. 카드를 다시 열어 주세요.' : message(error);
+    }
+  }
   function paintComments(rows) {
     list.replaceChildren();
-    if (!rows.length) {
+    if (!rows.some(row => !row.deleted_at)) {
       const empty = document.createElement('li');
       empty.className = 'feedback-empty';
       empty.textContent = '아직 댓글이 없어요. 첫 피드백을 남겨 주세요.';
       list.append(empty);
       return;
     }
-    for (const row of rows) {
+    const repliesOf = id => rows.filter(row => row.parent_id === id && !row.deleted_at);
+    function commentItem(row, isReply = false) {
       const item = document.createElement('li');
       const head = document.createElement('div');
       head.className = 'feedback-comment-head';
@@ -39,12 +66,104 @@ export function mountProjectFeedback(root, backend) {
       date.dateTime = row.created_at;
       date.textContent = new Date(row.created_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
       head.append(name, date);
+      let deleteConfirm = null;
+      if (!row.deleted_at && row.member_id === userId) {
+        const menu = document.createElement('details'); menu.className = 'feedback-menu';
+        const toggle = document.createElement('summary'); toggle.textContent = '⋯';
+        toggle.setAttribute('aria-label', '내 댓글 메뉴');
+        const choices = document.createElement('div'); choices.className = 'feedback-menu-options';
+        deleteConfirm = document.createElement('div');
+        deleteConfirm.className = 'feedback-delete-confirm'; deleteConfirm.hidden = true;
+        deleteConfirm.setAttribute('role', 'group'); deleteConfirm.setAttribute('aria-label', '댓글 삭제 확인');
+        const prompt = document.createElement('span'); prompt.textContent = '댓글을 삭제할까요?';
+        const confirmActions = document.createElement('div'); confirmActions.className = 'feedback-delete-actions';
+        const cancel = action('취소', () => { if (busy) return; deleteConfirm.hidden = true; toggle.focus(); });
+        cancel.className = 'feedback-confirm-button';
+        const remove = action('삭제', async () => {
+          if (busy || loading) return;
+          const token = generation, id = projectId;
+          busy = true; controls(); remove.disabled = true; status.textContent = '';
+          let saved = false;
+          try {
+            await backend.deleteProjectComment(row.id); saved = true;
+            if (token !== generation) return;
+            if (replyTarget === row.id) replyTarget = null;
+            drafts.delete(row.id);
+            await refresh(id, token);
+            if (token === generation) status.textContent = '댓글을 삭제했어요.';
+          } catch (error) {
+            if (token === generation) status.textContent = saved ? '삭제됐지만 목록을 불러오지 못했어요. 카드를 다시 열어 주세요.' : message(error);
+          } finally { if (token === generation) { busy = false; controls(); remove.disabled = false; } }
+        });
+        remove.className = 'feedback-confirm-button feedback-confirm-danger';
+        confirmActions.append(cancel, remove); deleteConfirm.append(prompt, confirmActions);
+        deleteConfirm.addEventListener('keydown', event => { if (event.key === 'Escape' && !busy) { deleteConfirm.hidden = true; toggle.focus(); } });
+        const requestDelete = action('댓글 삭제', () => {
+          if (busy || loading) return;
+          menu.open = false; deleteConfirm.hidden = false; cancel.focus();
+        });
+        requestDelete.className = 'feedback-menu-delete';
+        requestDelete.innerHTML = '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"/></svg><span>댓글 삭제</span>';
+        choices.append(requestDelete); menu.append(toggle, choices); head.append(menu);
+      }
       const body = document.createElement('p');
-      body.textContent = row.body;
+      body.textContent = row.deleted_at ? '삭제된 댓글입니다.' : row.body;
+      if (row.deleted_at) body.className = 'feedback-deleted';
       item.append(head, body);
-      list.append(item);
+      if (deleteConfirm) item.append(deleteConfirm);
+      if (isReply) return item;
+      const actions = document.createElement('div'); actions.className = 'feedback-comment-actions';
+      if (!row.deleted_at) actions.append(action('답글', () => {
+        if (!userId || busy || loading) return;
+        replyTarget = replyTarget === row.id ? null : row.id;
+        paintComments(rows);
+        list.querySelector('.feedback-reply-form textarea')?.focus();
+      }));
+      const replies = repliesOf(row.id);
+      if (replies.length) {
+        const show = action(expanded.has(row.id) ? '답글 접기' : `답글 ${replies.length}개 보기`, () => {
+          if (expanded.has(row.id)) expanded.delete(row.id); else expanded.add(row.id);
+          paintComments(rows);
+        });
+        show.setAttribute('aria-expanded', String(expanded.has(row.id))); actions.append(show);
+      }
+      item.append(actions);
+      if (replies.length && expanded.has(row.id)) {
+        const nested = document.createElement('ul'); nested.className = 'feedback-replies'; nested.setAttribute('aria-label', '답글');
+        replies.forEach(reply => nested.append(commentItem(reply, true))); item.append(nested);
+      }
+      if (replyTarget === row.id && !row.deleted_at) {
+        const replyForm = document.createElement('form'); replyForm.className = 'feedback-form feedback-reply-form';
+        const label = document.createElement('label'); label.textContent = '답글 남기기';
+        const textarea = document.createElement('textarea'); textarea.rows = 2; textarea.maxLength = 1000; textarea.required = true;
+        textarea.placeholder = '이 댓글에 답글을 남겨 주세요.'; textarea.value = drafts.get(row.id) || '';
+        textarea.oninput = () => drafts.set(row.id, textarea.value);
+        label.append(textarea);
+        const footer = document.createElement('div'); footer.className = 'feedback-submit';
+        const cancel = action('취소', () => { if (busy) return; drafts.delete(row.id); replyTarget = null; paintComments(rows); });
+        const send = document.createElement('button'); send.type = 'submit'; send.className = 'room-btn'; send.textContent = '답글 등록';
+        footer.append(cancel, send); replyForm.append(label, footer);
+        replyForm.onsubmit = async event => {
+          event.preventDefault();
+          const text = textarea.value.trim();
+          if (!text || !projectId || !userId || busy || loading) return;
+          const token = generation; busy = true; controls(); status.textContent = '';
+          try { await writeComment(text, row.id, token); }
+          finally { if (token === generation) { busy = false; controls(); } }
+        };
+        item.append(replyForm);
+      }
+      return item;
     }
+    rows.filter(row => !row.parent_id).forEach(row => {
+      if (row.deleted_at) {
+        // 원댓글은 숨기고 남아 있는 답글만 같은 위치에 표시한다.
+        repliesOf(row.id).forEach(reply => list.append(commentItem(reply, true)));
+      } else list.append(commentItem(row));
+    });
+    controls();
   }
+
   const message = error => /[가-힣]/.test(error?.message || '') ? error.message : '피드백을 처리하지 못했어요. 잠시 후 다시 시도해 주세요.';
   async function refresh(id, token, includeComments = true) {
     const result = await backend.getProjectFeedback(id);
@@ -61,19 +180,8 @@ export function mountProjectFeedback(root, backend) {
     busy = true;
     controls();
     status.textContent = '';
-    let saved = false;
-    try {
-      await backend.addProjectComment(id, body);
-      saved = true;
-      if (token !== generation) return;
-      input.value = '';
-      await refresh(id, token);
-      if (token === generation) status.textContent = '댓글을 등록했어요.';
-    } catch (error) {
-      if (token === generation) status.textContent = saved ? '댓글은 저장됐지만 목록을 새로 불러오지 못했어요. 카드를 다시 열어 주세요.' : message(error);
-    } finally {
-      if (token === generation) { busy = false; controls(); }
-    }
+    try { await writeComment(body, null, token); }
+    finally { if (token === generation) { busy = false; controls(); } }
   });
   buttons.forEach(button => button.addEventListener('click', async () => {
     if (!projectId || !userId || busy || reactionBusy.has(button.dataset.emoji) || loading) return;
@@ -94,6 +202,7 @@ export function mountProjectFeedback(root, backend) {
   return {
     async open(id) {
       const token = ++generation;
+      const openedAt = new Date().toISOString();
       projectId = id;
       userId = null;
       reactions = [];
@@ -101,6 +210,7 @@ export function mountProjectFeedback(root, backend) {
       reactionBusy.clear();
       loading = true;
       input.value = '';
+      expanded.clear(); drafts.clear(); replyTarget = null;
       list.replaceChildren();
       paintReactions();
       controls();
@@ -111,13 +221,17 @@ export function mountProjectFeedback(root, backend) {
         if (!member?.approved) { status.textContent = '피드백은 로그인한 승인 회원만 이용할 수 있어요.'; return; }
         userId = member.id;
         await refresh(id, token);
-        if (token === generation) status.textContent = '';
+        if (token === generation) {
+          status.textContent = '';
+          try { await onViewed(id, openedAt); }
+          catch { if (token === generation) status.textContent = '댓글은 불러왔지만 알림 확인을 저장하지 못했어요. 다시 열어 주세요.'; }
+        }
       } catch (error) {
         if (token === generation) { userId = null; status.textContent = message(error); }
       } finally {
         if (token === generation) { loading = false; controls(); }
       }
     },
-    close() { generation++; projectId = userId = null; busy = loading = false; reactionBusy.clear(); controls(); }
+    close() { expanded.clear(); drafts.clear(); replyTarget = null; generation++; projectId = userId = null; busy = loading = false; reactionBusy.clear(); controls(); }
   };
 }

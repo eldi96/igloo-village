@@ -315,4 +315,367 @@ with check (member_id = (select auth.uid()) and (select private.is_member()) and
 create policy project_reactions_delete on public.project_reactions for delete to authenticated
 using (member_id = (select auth.uid()) and (select private.is_member()) and exists (select 1 from public.projects p where p.id = project_id));
 
+-- IGLOO VISIT ANALYTICS (local integration)
+
+-- 실험에 동의한 사용자를 관리한다. 협업자는 등록하지 않는다.
+-- cohort=1: 최초 비교군, cohort>=2: 순차 확대된 참여군.
+create table public.visit_participants (
+  member_id uuid primary key references public.members(id) on delete cascade,
+  cohort smallint not null check (cohort between 1 and 50),
+  included_from date not null,
+  included_until date,
+  created_at timestamptz not null default now(),
+  check (included_until is null or included_until >= included_from)
+);
+create index visit_participants_active on public.visit_participants(included_from, included_until);
+alter table public.visit_participants enable row level security;
+revoke all on public.visit_participants from public, anon, authenticated;
+grant select on public.visit_participants to authenticated;
+create policy visit_participants_self_read on public.visit_participants for select to authenticated
+  using (member_id = (select auth.uid()) and (select private.is_member()));
+
+-- 한국 날짜 1행에 인정된 방문 횟수와 최근 호출 시각을 저장한다.
+create table public.daily_visits (
+  member_id uuid not null references public.members(id) on delete cascade,
+  visit_date date not null default ((now() at time zone 'Asia/Seoul')::date),
+  first_seen_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  visit_count integer not null default 1 check (visit_count >= 1),
+  primary key (member_id, visit_date)
+);
+create index daily_visits_date on public.daily_visits(visit_date desc);
+alter table public.daily_visits enable row level security;
+revoke all on public.daily_visits from public, anon, authenticated;
+
+create function private.record_visit_atomic() returns boolean
+language plpgsql volatile security definer set search_path = '' as $$
+declare
+  uid uuid := (select auth.uid());
+  seen_at timestamptz := clock_timestamp();
+  target_day date;
+begin
+  if uid is null or not private.is_member() then return false; end if;
+  target_day := (seen_at at time zone 'Asia/Seoul')::date;
+  if not exists (
+    select 1 from public.visit_participants p
+    where p.member_id = uid and p.included_from <= target_day
+      and (p.included_until is null or p.included_until >= target_day)
+  ) then return false; end if;
+
+  insert into public.daily_visits(member_id, visit_date, first_seen_at, last_seen_at, visit_count)
+  values (uid, target_day, seen_at, seen_at, 1)
+  on conflict (member_id, visit_date) do update
+    set visit_count = public.daily_visits.visit_count
+        + case when public.daily_visits.last_seen_at <= excluded.last_seen_at - interval '30 minutes'
+               then 1 else 0 end,
+        last_seen_at = greatest(public.daily_visits.last_seen_at, excluded.last_seen_at);
+  return true;
+end;
+$$;
+revoke all on function private.record_visit_atomic() from public, anon, authenticated;
+grant execute on function private.record_visit_atomic() to authenticated;
+
+-- 기존 JS의 recordVisit() 호출 형식은 그대로 유지한다.
+create function public.record_visit() returns boolean
+language sql volatile security invoker set search_path = '' as $$
+  select private.record_visit_atomic();
+$$;
+revoke all on function public.record_visit() from public, anon, authenticated;
+grant execute on function public.record_visit() to authenticated;
+
+-- 이미 있는 get_visit_trend()는 보존한다. 새 횟수 그래프 전용 RPC만 추가한다.
+-- 그래프에는 개인별 방문 기록 대신 집계값만 반환한다.
+create function private.aggregate_visit_counts(p_days integer)
+returns table (
+  visit_date date,
+  baseline_daily_visits bigint,
+  total_daily_visits bigint,
+  baseline_cumulative_visits bigint,
+  total_cumulative_visits bigint,
+  baseline_active integer,
+  total_active integer,
+  baseline_participants integer,
+  total_participants integer
+)
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  if not private.is_member() then
+    raise insufficient_privilege using message = '승인된 회원만 접속 통계를 볼 수 있습니다.';
+  end if;
+  if p_days is null or p_days < 1 or p_days > 90 then
+    raise invalid_parameter_value using message = '조회 기간은 1~90일이어야 합니다.';
+  end if;
+  return query
+  with days as (
+    select d::date as day from generate_series(
+      (now() at time zone 'Asia/Seoul')::date - (p_days - 1),
+      (now() at time zone 'Asia/Seoul')::date, interval '1 day'
+    ) d
+  ), daily as (
+    select d.day,
+      coalesce(sum(v.visit_count) filter (where p.cohort = 1), 0)::bigint as b_visits,
+      coalesce(sum(v.visit_count) filter (where p.member_id is not null), 0)::bigint as t_visits,
+      count(v.member_id) filter (where p.cohort = 1)::integer as b_active,
+      count(v.member_id) filter (where p.member_id is not null)::integer as t_active
+    from days d
+    left join public.daily_visits v on v.visit_date = d.day
+    left join public.visit_participants p
+      on p.member_id = v.member_id and p.included_from <= v.visit_date
+      and (p.included_until is null or p.included_until >= v.visit_date)
+    group by d.day
+  )
+  select d.day, d.b_visits, d.t_visits,
+    (select coalesce(sum(v2.visit_count), 0)::bigint
+       from public.daily_visits v2 join public.visit_participants p2 on p2.member_id = v2.member_id
+       where p2.cohort = 1 and v2.visit_date <= d.day
+         and v2.visit_date >= p2.included_from
+         and (p2.included_until is null or v2.visit_date <= p2.included_until)),
+    (select coalesce(sum(v2.visit_count), 0)::bigint
+       from public.daily_visits v2 join public.visit_participants p2 on p2.member_id = v2.member_id
+       where v2.visit_date <= d.day and v2.visit_date >= p2.included_from
+         and (p2.included_until is null or v2.visit_date <= p2.included_until)),
+    d.b_active, d.t_active,
+    (select count(*)::integer from public.visit_participants p3
+       where p3.cohort = 1 and p3.included_from <= d.day
+         and (p3.included_until is null or p3.included_until >= d.day)),
+    (select count(*)::integer from public.visit_participants p3
+       where p3.included_from <= d.day
+         and (p3.included_until is null or p3.included_until >= d.day))
+  from daily d order by d.day;
+end;
+$$;
+revoke all on function private.aggregate_visit_counts(integer) from public, anon, authenticated;
+grant execute on function private.aggregate_visit_counts(integer) to authenticated;
+
+create function public.get_visit_counts(p_days integer default 14)
+returns table (
+  visit_date date,
+  baseline_daily_visits bigint,
+  total_daily_visits bigint,
+  baseline_cumulative_visits bigint,
+  total_cumulative_visits bigint,
+  baseline_active integer,
+  total_active integer,
+  baseline_participants integer,
+  total_participants integer
+)
+language sql stable security invoker set search_path = '' as $$
+  select * from private.aggregate_visit_counts(p_days);
+$$;
+revoke all on function public.get_visit_counts(integer) from public, anon, authenticated;
+grant execute on function public.get_visit_counts(integer) to authenticated;
+
+-- 개인별 접속 원본은 공개하지 않고, 승인 회원에게 집계값만 제공한다.
+-- 원본 RLS를 우회하는 함수는 API 노출이 없는 private 스키마에 둔다.
+create function private.aggregate_visit_trend(p_days integer)
+returns table (
+  visit_date date,
+  baseline_total integer,
+  baseline_active integer,
+  baseline_rate numeric,
+  total_participants integer,
+  total_active integer,
+  total_rate numeric
+)
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  if not private.is_member() then
+    raise insufficient_privilege using message = '승인된 회원만 접속 통계를 볼 수 있습니다.';
+  end if;
+  if p_days is null or p_days < 1 or p_days > 90 then
+    raise invalid_parameter_value using message = '조회 기간은 1~90일이어야 합니다.';
+  end if;
+  return query
+  with days as (
+    select d::date as day
+    from generate_series(
+      ((now() at time zone 'Asia/Seoul')::date - (p_days - 1)),
+      (now() at time zone 'Asia/Seoul')::date,
+      interval '1 day'
+    ) as d
+  ), counts as (
+    select
+      days.day,
+      count(p.member_id) filter (where p.cohort = 1)::integer as b_total,
+      count(v.member_id) filter (where p.cohort = 1)::integer as b_active,
+      count(p.member_id)::integer as t_total,
+      count(v.member_id) filter (where p.member_id is not null)::integer as t_active
+    from days
+    left join public.visit_participants p
+      on p.included_from <= days.day
+       and (p.included_until is null or p.included_until >= days.day)
+    left join public.daily_visits v
+      on v.member_id = p.member_id and v.visit_date = days.day
+    group by days.day
+  )
+  select
+    c.day,
+    c.b_total,
+    c.b_active,
+    round((100.0 * c.b_active / nullif(c.b_total, 0))::numeric, 1),
+    c.t_total,
+    c.t_active,
+    round((100.0 * c.t_active / nullif(c.t_total, 0))::numeric, 1)
+  from counts c
+  order by c.day;
+end;
+$$;
+revoke all on function private.aggregate_visit_trend(integer) from public, anon, authenticated;
+grant execute on function private.aggregate_visit_trend(integer) to authenticated;
+
+-- API 공개 함수는 SECURITY INVOKER. 내부에서 권한 검사한 집계만 전달한다.
+create function public.get_visit_trend(p_days integer default 14)
+returns table (
+  visit_date date,
+  baseline_total integer,
+  baseline_active integer,
+  baseline_rate numeric,
+  total_participants integer,
+  total_active integer,
+  total_rate numeric
+)
+language sql stable security invoker set search_path = '' as $$
+  select * from private.aggregate_visit_trend(p_days);
+$$;
+revoke all on function public.get_visit_trend(integer) from public, anon, authenticated;
+grant execute on function public.get_visit_trend(integer) to authenticated;
+
+create or replace function public.get_member_visit_counts()
+returns bigint
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  uid uuid := (select auth.uid());
+  total bigint;
+begin
+  if uid is null or not (select private.is_member()) then
+    raise insufficient_privilege
+      using message = '승인된 회원만 조회할 수 있습니다.';
+  end if;
+
+  select coalesce(sum(d.visit_count), 0)
+  into total
+  from public.daily_visits d
+  where d.member_id = uid;
+
+  return total;
+end;
+$$;
+
+revoke all on function public.get_member_visit_counts()
+from public, anon, authenticated;
+
+grant execute on function public.get_member_visit_counts()
+to authenticated;
+
+-- END IGLOO VISIT ANALYTICS
+
+
+-- 댓글 답글·삭제 변경 (2026-11-05)
+-- 기존 댓글은 보존하고 답글 연결과 삭제 표시만 추가한다.
+alter table public.project_comments
+  add column parent_id uuid references public.project_comments(id) on delete cascade,
+  add column deleted_at timestamptz;
+alter table public.project_comments drop constraint project_comments_body_check;
+alter table public.project_comments add constraint project_comments_body_check check (
+  (deleted_at is null and char_length(body) between 1 and 1000 and btrim(body) <> '')
+  or (deleted_at is not null and body = '')
+);
+create index project_comments_parent_time on public.project_comments(parent_id, created_at);
+
+-- 호출자 권한으로 검사하며, 댓글 수정 권한을 삭제 처리로만 제한한다.
+create function private.guard_project_comment_write()
+returns trigger language plpgsql security invoker set search_path = '' as $$
+declare parent public.project_comments%rowtype;
+begin
+  if TG_OP = 'INSERT' then
+    if NEW.deleted_at is not null then
+      raise exception '삭제된 상태로 댓글을 등록할 수 없어요.' using errcode = '23514';
+    end if;
+    if NEW.parent_id is not null then
+      select * into parent from public.project_comments where id = NEW.parent_id;
+      if not found or parent.project_id <> NEW.project_id or parent.parent_id is not null or parent.deleted_at is not null then
+        raise exception '같은 프로젝트의 삭제되지 않은 원댓글에만 답글을 남길 수 있어요.' using errcode = '23514';
+      end if;
+    end if;
+  else
+    if NEW.id is distinct from OLD.id or NEW.project_id is distinct from OLD.project_id
+      or NEW.member_id is distinct from OLD.member_id or NEW.parent_id is distinct from OLD.parent_id
+      or NEW.created_at is distinct from OLD.created_at
+      or OLD.deleted_at is not null or NEW.deleted_at is null or NEW.body <> '' then
+      raise exception '댓글은 삭제 처리만 할 수 있어요.' using errcode = '23514';
+    end if;
+    NEW.deleted_at := now();
+  end if;
+  return NEW;
+end $$;
+revoke all on function private.guard_project_comment_write() from public, anon, authenticated;
+create trigger guard_project_comment_write before insert or update on public.project_comments
+for each row execute function private.guard_project_comment_write();
+
+grant insert(parent_id) on public.project_comments to authenticated;
+grant update(body, deleted_at) on public.project_comments to authenticated;
+create policy project_comments_soft_delete on public.project_comments for update to authenticated
+using (member_id = (select auth.uid()) and (select private.is_member())
+  and exists (select 1 from public.projects p where p.id = project_id))
+with check (member_id = (select auth.uid()) and (select private.is_member())
+  and exists (select 1 from public.projects p where p.id = project_id));
+
+
+-- 새 댓글부터 프로젝트 주인에게 알림을 만든다. 기존 우편 테이블은 변경하지 않는다.
+create table public.comment_notifications (
+ id uuid primary key default gen_random_uuid(),
+ recipient_id uuid not null references public.members(id) on delete cascade,
+ project_id uuid not null references public.projects(id) on delete cascade,
+ comment_id uuid not null unique references public.project_comments(id) on delete cascade,
+ created_at timestamptz not null default now(),
+ read_at timestamptz
+);
+create index comment_notifications_unread on public.comment_notifications(recipient_id,created_at desc) where read_at is null;
+create index comment_notifications_project on public.comment_notifications(project_id);
+alter table public.comment_notifications enable row level security;
+revoke all on public.comment_notifications from public,anon,authenticated;
+grant select on public.comment_notifications to authenticated;
+grant update(read_at) on public.comment_notifications to authenticated;
+create policy comment_notifications_read on public.comment_notifications for select to authenticated
+using (recipient_id=(select auth.uid()) and (select private.is_member()) and exists(select 1 from public.projects p where p.id=project_id and p.owner_id=(select auth.uid())));
+create policy comment_notifications_mark_read on public.comment_notifications for update to authenticated
+using (recipient_id=(select auth.uid()) and (select private.is_member()) and exists(select 1 from public.projects p where p.id=project_id and p.owner_id=(select auth.uid())))
+with check (recipient_id=(select auth.uid()) and (select private.is_member()) and exists(select 1 from public.projects p where p.id=project_id and p.owner_id=(select auth.uid())));
+-- 브라우저에 타인 알림 생성 권한을 주지 않고 비공개 트리거만 알림을 생성한다.
+create function private.notify_project_comment() returns trigger language plpgsql security definer set search_path='' as $$
+declare owner uuid;
+begin
+ if TG_OP='INSERT' then
+   select owner_id into owner from public.projects where id=NEW.project_id;
+   if owner is not null and owner<>NEW.member_id then
+     insert into public.comment_notifications(recipient_id,project_id,comment_id) values(owner,NEW.project_id,NEW.id);
+   end if;
+ elsif NEW.deleted_at is not null and OLD.deleted_at is null then
+   delete from public.comment_notifications where comment_id=NEW.id;
+ end if;
+ return NEW;
+end $$;
+revoke all on function private.notify_project_comment() from public,anon,authenticated;
+create trigger notify_project_comment after insert or update of deleted_at on public.project_comments
+for each row execute function private.notify_project_comment();
+alter publication supabase_realtime add table public.comment_notifications;
+
+
+-- 알림 본문·수신자·개수는 공개하지 않고 점등할 이글루 ID만 반환한다.
+create function public.get_unread_mailbox_homes()
+returns table(igloo_id smallint)
+language sql stable security definer set search_path = '' as $$
+  select distinct p.igloo_id
+  from public.comment_notifications n
+  join public.projects p on p.id = n.project_id and p.owner_id = n.recipient_id
+  join public.igloos i on i.id = p.igloo_id and i.owner_id = n.recipient_id
+  where n.read_at is null;
+$$;
+revoke all on function public.get_unread_mailbox_homes() from public, anon, authenticated;
+grant execute on function public.get_unread_mailbox_homes() to anon, authenticated;
+
 commit;

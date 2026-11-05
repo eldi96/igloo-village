@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { addMailboxes } from './mailboxes.js';
+import { addMailboxes } from './mailboxes.js?v=champagne-glow';
 
 export function addVillage(scene, ctx) {
   const { places, hub, heightAt, rng, lighthouse, mailPreviewHome = null } = ctx;
@@ -449,7 +449,7 @@ export function addVillage(scene, ctx) {
     instance(cone, snow, x, y + 2.39, z, 0.28, 0.15, 0.28);
     drift(x, z, 0.36);
   }
-  addMailboxes(scene, { places, heightAt, previewHomeIndex: mailPreviewHome });
+  const mailboxes = addMailboxes(scene, { places, heightAt });
   for (const [geometry, byMaterial] of batches) for (const [material, matrices] of byMaterial) {
     const mesh = new THREE.InstancedMesh(geometry, material, matrices.length);
     for (let i = 0; i < matrices.length; i++) mesh.setMatrixAt(i, matrices[i]);
@@ -458,7 +458,10 @@ export function addVillage(scene, ctx) {
   }
   return {
     fireSpot,
-    update(timeSeconds) {
+    setUnreadMailboxes(homes) { mailboxes.userData.setUnreadHomes(homes); },
+    pickMailbox(ray) { return mailboxes.userData.pickHome(ray); },
+    update(timeSeconds, camera, viewportHeight) {
+      if (camera) mailboxes.userData.update(camera, viewportHeight);
       if (beacon) beacon.rotation.y = timeSeconds * 0.12;
       const flicker = 0.86 + 0.09 * Math.sin(timeSeconds * 11.7) + 0.05 * Math.sin(timeSeconds * 23.1);
       if (fireLight) fireLight.intensity = 5 * flicker;

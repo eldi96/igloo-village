@@ -2,7 +2,7 @@
 // 빛과 그림자는 텍스처에 미리 그려 그림자 계산 없이 가볍게 돌린다.
 import * as THREE from 'three';
 import { mountPrivacyPanel } from './privacy-panel.js';
-import { mountProjectFeedback } from './project-feedback.js';
+import { mountProjectFeedback } from './project-feedback.js?v=comment-actions';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 const STYLE = `
@@ -55,7 +55,29 @@ const STYLE = `
   .room-icon:active:not(:disabled) { transform: scale(.94); }
   .room-icon:disabled { opacity: .3; cursor: default; }
   .room-shot { flex: none; aspect-ratio: 1.618034 / 1; margin-top: 12px; overflow: hidden; border-radius: 14px; background: #f8f3ec; }
-  .room-shot svg { display: block; width: 100%; height: 100%; }
+  /* 업로드한 이미지 한 장을 브라우저 모양의 프레임에 표시한다. */
+  .room-shot { display: flex; flex-direction: column; }
+  .room-browser-bar { flex: none; display: grid; grid-template-columns: 48px minmax(0, 1fr) 48px; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-bottom: 1px solid rgba(255,255,255,.18); background: linear-gradient(135deg, rgba(255,248,238,.25), rgba(255,248,238,.12)); }
+  .room-browser-dots { display: flex; gap: 6px; }
+  .room-browser-dots i { width: 9px; height: 9px; border-radius: 50%; background: #ff655b; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); }
+  .room-browser-dots i:nth-child(2) { background: #f5c14b; }
+  .room-browser-dots i:nth-child(3) { background: #61c554; }
+  .room-browser-address { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 10px; border: 1px solid rgba(255,255,255,.16); border-radius: 6px; background: rgba(25,19,16,.28); color: #fff3e4; font-size: 10px; line-height: 1.5; text-align: center; }
+  .room-browser-content { position: relative; flex: 1; min-height: 0; overflow: hidden; display: grid; place-items: center; }
+  .room-image-frame { position: absolute; inset: 0; }
+  .room-browser-content img { position: absolute; inset: 0; }
+  .room-shot[data-portrait="true"] { aspect-ratio: auto; }
+  .room-shot[data-portrait="true"] .room-browser-bar { display: none; }
+  .room-shot[data-portrait="true"] .room-browser-content { flex: none; height: clamp(260px, 46dvh, 440px); box-sizing: border-box; padding: 18px; background: radial-gradient(ellipse at center, rgba(255,244,228,.1), transparent 75%); }
+  .room-shot[data-portrait="true"] .room-image-frame { position: absolute; inset: 18px auto 18px 50%; transform: translateX(-50%); height: auto; width: auto; max-width: calc(100% - 36px); aspect-ratio: 1 / 2; box-sizing: border-box; overflow: visible; border: 0; border-radius: 18% / 9%; background: #090a0c; box-shadow: 0 18px 28px -16px rgba(10,7,5,.55), 0 3px 6px rgba(10,7,5,.14); }
+  .room-shot[data-portrait="true"] .room-image-frame::before { content: ''; position: absolute; z-index: 2; inset: 0; background: url('./assets/mobile-frame.svg') center / 100% 100% no-repeat; pointer-events: none; }
+  .room-shot[data-portrait="true"] .room-image-frame::after { content: ''; position: absolute; top: 10px; left: 50%; width: 27%; height: 9px; transform: translateX(-50%); border-radius: 999px; background: radial-gradient(circle at 88% 50%, #17202c 0 2px, transparent 3px), #010203; box-shadow: 0 0 0 1px rgba(255,255,255,.025); pointer-events: none; }
+  .room-shot[data-portrait="true"] .room-image-frame img { position: absolute; inset: 25px 7px 10px; display: block; width: calc(100% - 14px); height: calc(100% - 35px); min-width: 0; min-height: 0; border-radius: 0; background: #090a0c; object-fit: contain; }
+
+
+  .room-browser-content img[data-landscape="true"] { object-fit: cover; }
+  .room-browser-content p { margin: 0; color: #fff0df; font-size: 12px; }
+
   .room-author { display: flex; align-items: center; gap: 10px; flex: none; margin-top: 18px; color: #f0d8c2; font-size: 13px; }
   .room-avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #d67030; color: #fff6ea; font-weight: 600; }
   .room-card h2 { flex: none; margin: 12px 0 0; font-size: 25px; font-weight: 600; letter-spacing: -.02em; line-height: 1.3; overflow-wrap: anywhere; }
@@ -95,6 +117,11 @@ const STYLE = `
   .feedback-reactions button[aria-busy=true] { cursor: progress; }
   .feedback-reactions button[aria-pressed=true] { border-color: rgba(255,222,179,.8); background: rgba(255,222,179,.22); }
   .feedback-reactions button:disabled { opacity: .5; cursor: default; }
+  .room-author [data-owner] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .room-author .room-avatar { flex: none; }
+  .room-author .feedback-reactions { flex: none; margin-left: auto; gap: 6px; }
+  .room-author .feedback-reactions button { min-height: 32px; gap: 5px; padding: 4px 9px; font-size: 12px; line-height: 1.4; }
+
   .feedback-status { font-size: 12px; color: #ffe2c4; }
   .feedback-status { min-height: 20px; margin: 8px 0; }
   .feedback-list { list-style: none; margin: 16px 0; padding: 0; max-height: 280px; overflow-y: auto; scrollbar-width: thin; }
@@ -102,6 +129,32 @@ const STYLE = `
   .feedback-comment-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
   .feedback-comment-head time, .feedback-empty { color: #e2c5ab; font-size: 12px; }
   .feedback-list p { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .feedback-comment-head strong { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .feedback-menu { position: relative; }
+  .feedback-menu summary { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; list-style: none; cursor: pointer; font-size: 20px; }
+  .feedback-menu summary::-webkit-details-marker { display: none; }
+  .feedback-menu summary:hover, .feedback-menu[open] summary { background: rgba(255,255,255,.1); }
+  .feedback-menu-options { position: absolute; z-index: 2; top: calc(100% + 4px); right: 0; min-width: 128px; padding: 5px; border: 1px solid rgba(255,245,230,.28); border-radius: 12px; background: linear-gradient(135deg, rgba(99,76,61,.88), rgba(44,31,25,.86)); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); box-shadow: inset 0 1px rgba(255,255,255,.18); }
+  .feedback-menu-delete { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 38px; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: #ffe2d9; font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer; }
+  .feedback-menu-delete:hover:not(:disabled) { background: rgba(255,226,217,.1); }
+  .feedback-delete-confirm { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; padding: 12px; border: 1px solid rgba(255,245,230,.22); border-radius: 12px; background: linear-gradient(135deg, rgba(255,239,219,.1), rgba(38,24,19,.2)); box-shadow: inset 0 1px rgba(255,255,255,.12); font-size: 12px; }
+  .feedback-delete-actions { display: flex; gap: 6px; margin-left: auto; }
+  .feedback-confirm-button { min-height: 34px; padding: 6px 12px; border: 1px solid rgba(255,245,230,.2); border-radius: 9px; background: rgba(255,255,255,.04); color: #fff0df; font: inherit; font-size: 12px; cursor: pointer; }
+  .feedback-confirm-button:hover:not(:disabled) { background: rgba(255,255,255,.1); }
+  .feedback-confirm-danger { border-color: rgba(248,164,147,.4); background: rgba(183,73,56,.17); color: #ffcec3; }
+  .feedback-confirm-danger:hover:not(:disabled) { background: rgba(183,73,56,.3); }
+  .feedback-menu-delete:disabled, .feedback-confirm-button:disabled { opacity: .5; cursor: progress; }
+
+  .feedback-text-action { padding: 5px 0; border: 0; background: transparent; color: #e8cfb8; font: inherit; font-size: 12px; cursor: pointer; }
+  .feedback-text-action:hover:not(:disabled) { color: #fff6eb; text-decoration: underline; }
+  .feedback-text-action:disabled { opacity: .5; cursor: default; }
+  .feedback-comment-actions { display: flex; gap: 16px; margin-top: 5px; }
+  .feedback-replies { list-style: none; margin: 8px 0 0 6px; padding: 0 0 0 16px; border-left: 1px solid rgba(255,255,255,.24); }
+  .feedback-replies li:last-child { border-bottom: 0; padding-bottom: 4px; }
+  .feedback-deleted { color: #e2c5ab; font-size: 12px; }
+  .feedback-reply-form { min-width: 0; margin: 10px 6px 4px; }
+  .feedback-form.feedback-reply-form textarea { min-height: 60px; padding: 10px; font-size: 13px; }
+  .feedback-list button:focus-visible, .feedback-menu summary:focus-visible { outline: 2px solid #fff0dd; outline-offset: 3px; }
   .feedback-form label { display: block; font-size: 12px; color: #fff0df; }
   .feedback-form textarea { box-sizing: border-box; width: 100%; min-height: 84px; resize: vertical; margin-top: 8px; padding: 12px; border: 1px solid rgba(255,255,255,.24); border-radius: 12px; background: rgba(24,16,13,.22); color: #fff3e4; font: inherit; }
   .feedback-form textarea:focus-visible { outline: 2px solid #fff0dd; outline-offset: 2px; }
@@ -473,7 +526,7 @@ const ICON_NEXT = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" s
 // 첫 화면 캡처가 생기기 전까지 쓰는 예시 그림.
 
 
-export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
+export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onNotificationsRead = () => {} }) {
   const style = document.createElement('style');
   style.textContent = STYLE;
   document.head.appendChild(style);
@@ -682,7 +735,7 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
   card.className = 'room-ui room-card';
   card.hidden = true;
   card.setAttribute('aria-label', '프로젝트 상세');
-  card.innerHTML = `<div class="room-card-top"><div class="room-pager"><button type="button" class="room-icon" data-prev aria-label="이전 프로젝트">${ICON_PREV}</button><button type="button" class="room-icon" data-next aria-label="다음 프로젝트">${ICON_NEXT}</button></div></div><div class="room-shot"><img data-image alt="" hidden><p data-no-image>등록된 이미지가 없어요.</p></div><div class="room-author"><span class="room-avatar" data-avatar></span><span data-owner></span></div><div class="room-project-heading"><h2 data-title></h2></div><div class="room-link" data-host></div><p class="room-desc" data-description></p><div class="room-howto"><h3>사용법</h3><p data-instructions></p></div><div class="room-card-actions"><a class="room-btn primary" data-open target="_blank" rel="noopener noreferrer">프로젝트 열기 →</a><button type="button" class="room-btn" data-edit>프로젝트 수정</button><button type="button" class="room-btn quiet" data-remove>이 상자 비우기</button></div><p class="room-error" role="alert" data-card-error></p><section class="project-feedback" aria-label="댓글과 반응"></section>`;
+  card.innerHTML = `<div class="room-card-top"><div class="room-pager"><button type="button" class="room-icon" data-prev aria-label="이전 프로젝트">${ICON_PREV}</button><button type="button" class="room-icon" data-next aria-label="다음 프로젝트">${ICON_NEXT}</button></div></div><div class="room-shot"><div class="room-browser-bar"><span class="room-browser-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="room-browser-address" data-browser-host></span><span class="room-browser-end" aria-hidden="true"></span></div><div class="room-browser-content"><div class="room-image-frame"><img data-image alt="" hidden></div><p data-no-image>등록된 이미지가 없어요.</p></div></div><div class="room-author"><span class="room-avatar" data-avatar></span><span data-owner></span></div><div class="room-project-heading"><h2 data-title></h2></div><div class="room-link" data-host></div><p class="room-desc" data-description></p><div class="room-howto"><h3>사용법</h3><p data-instructions></p></div><div class="room-card-actions"><a class="room-btn primary" data-open target="_blank" rel="noopener noreferrer">프로젝트 열기 →</a><button type="button" class="room-btn" data-edit>프로젝트 수정</button><button type="button" class="room-btn quiet" data-remove>이 상자 비우기</button></div><p class="room-error" role="alert" data-card-error></p><section class="project-feedback" aria-label="댓글과 반응"></section>`;
   const cardBody = document.createElement('div');
   cardBody.className = 'room-card-body';
   cardBody.append(...card.childNodes);
@@ -703,7 +756,12 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
   privacyRoot.setAttribute('aria-label', '방 전체 공개 설정');
   document.body.append(privacyRoot);
   const privacy = mountPrivacyPanel(privacyRoot, backend, { onRoomChange: onRoomPublicChange });
-  const feedback = mountProjectFeedback(card.querySelector('.project-feedback'), backend);
+  const feedback = mountProjectFeedback(card.querySelector('.project-feedback'), backend, { onViewed: async (id, before) => {
+    if (!isMine || !active) return;
+    await backend.markCommentNotificationsRead(id, before);
+    onNotificationsRead();
+  } });
+  card.querySelector('.room-author').append(card.querySelector('.feedback-reactions'));
   const q = selector => card.querySelector(selector);
   const form = formVeil.querySelector('form');
   const linkInput = form.elements.link;
@@ -842,14 +900,27 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
     q('[data-owner]').textContent = ownerName || '수강생';
     q('[data-title]').textContent = project.title;
     q('[data-host]').textContent = hostOf(project.url);
+    q('[data-browser-host]').textContent = hostOf(project.url);
     q('[data-description]').textContent = project.description || '등록된 설명이 없어요.';
     q('[data-instructions]').textContent = project.instructions || '등록된 사용법이 없어요.';
     const image = q('[data-image]');
+    const shot = q('.room-shot');
+    delete image.dataset.landscape;
+    delete shot.dataset.portrait;
+    shot.style.removeProperty('--image-ratio');
+    function fitImage() {
+      if (!image.naturalWidth || !image.naturalHeight) return;
+      image.dataset.landscape = String(image.naturalWidth > image.naturalHeight);
+      shot.dataset.portrait = String(image.naturalHeight > image.naturalWidth);
+      shot.style.setProperty('--image-ratio', `${image.naturalWidth} / ${image.naturalHeight}`);
+    }
+    image.onload = fitImage;
     image.hidden = !project.image_url;
     image.alt = `${project.title} 대표 이미지`;
-    image.onerror = () => { image.hidden = true; q('[data-no-image]').hidden = false; };
+    image.onerror = () => { image.hidden = true; delete shot.dataset.portrait; q('[data-no-image]').hidden = false; };
     if (project.image_url) image.src = project.image_url;
     else image.removeAttribute('src');
+    if (project.image_url && image.complete) fitImage();
     q('[data-no-image]').hidden = Boolean(project.image_url);
     q('[data-open]').href = normalizeLink(project.url) || '#';
     q('[data-edit]').hidden = !isMine;
@@ -922,10 +993,14 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
     if (/failed to fetch|network/i.test(text)) return '연결을 확인하고 다시 시도해 주세요.';
     return '처리하지 못했어요. 잠시 후 다시 시도해 주세요.';
   };
-  async function load(token) {
+  async function load(token, projectId = null) {
     try {
       const rows = await backend.getProjects(home);
-      if (token === loadToken) applyProjects(rows);
+      if (token === loadToken) {
+        applyProjects(rows);
+        const target = projectId && slots.find(slot => slot.project?.id === projectId);
+        if (target) openCard(target);
+      }
     } catch (e) {
       // 로그인 전이거나 비공개 이글루면 빈 상자만 보인다.
       if (token === loadToken) applyProjects([]);
@@ -1091,7 +1166,7 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
       camera.fov = aspect < 1.1 ? 68 : 50;
       camera.updateProjectionMatrix();
     },
-    enter({ home: nextHome, isMine: mine, isPublic = false, ownerName: name }) {
+    enter({ home: nextHome, isMine: mine, isPublic = false, ownerName: name, projectId = null }) {
       active = true;
       home = nextHome;
       isMine = Boolean(mine);
@@ -1107,7 +1182,7 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
       controls.hidden = false;
       applyProjects([]);
       canvas.style.cursor = 'grab';
-      load(++loadToken);
+      load(++loadToken, projectId);
     },
     leave() {
       privacy.leave();
