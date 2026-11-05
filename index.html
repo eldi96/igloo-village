@@ -1325,7 +1325,7 @@ async function goInside(ig) {
     });
     room = lighthouseRoom;
   } else {
-    if (!iglooRoom) iglooRoom = (await import('./room.js')).createRoom({ canvas, backend: villageBackend, onRoomPublicChange: value => { if (currentRoomIg) currentRoomIg.isPublic = value; } });
+    if (!iglooRoom) iglooRoom = (await import('./room.js?v=control-guide')).createRoom({ canvas, backend: villageBackend, onRoomPublicChange: value => { if (currentRoomIg) currentRoomIg.isPublic = value; } });
     room = iglooRoom;
   }
   room.setAspect?.(W() / H());
