@@ -68,16 +68,12 @@ export function mountProjectFeedback(root, backend, { onViewed = () => {} } = {}
       head.append(name, date);
       let deleteConfirm = null;
       if (!row.deleted_at && row.member_id === userId) {
-        const menu = document.createElement('details'); menu.className = 'feedback-menu';
-        const toggle = document.createElement('summary'); toggle.textContent = '⋯';
-        toggle.setAttribute('aria-label', '내 댓글 메뉴');
-        const choices = document.createElement('div'); choices.className = 'feedback-menu-options';
         deleteConfirm = document.createElement('div');
         deleteConfirm.className = 'feedback-delete-confirm'; deleteConfirm.hidden = true;
         deleteConfirm.setAttribute('role', 'group'); deleteConfirm.setAttribute('aria-label', '댓글 삭제 확인');
         const prompt = document.createElement('span'); prompt.textContent = '댓글을 삭제할까요?';
         const confirmActions = document.createElement('div'); confirmActions.className = 'feedback-delete-actions';
-        const cancel = action('취소', () => { if (busy) return; deleteConfirm.hidden = true; toggle.focus(); });
+        const cancel = action('취소', () => { if (busy) return; deleteConfirm.hidden = true; requestDelete.focus(); });
         cancel.className = 'feedback-confirm-button';
         const remove = action('삭제', async () => {
           if (busy || loading) return;
@@ -97,21 +93,23 @@ export function mountProjectFeedback(root, backend, { onViewed = () => {} } = {}
         });
         remove.className = 'feedback-confirm-button feedback-confirm-danger';
         confirmActions.append(cancel, remove); deleteConfirm.append(prompt, confirmActions);
-        deleteConfirm.addEventListener('keydown', event => { if (event.key === 'Escape' && !busy) { deleteConfirm.hidden = true; toggle.focus(); } });
+        deleteConfirm.addEventListener('keydown', event => { if (event.key === 'Escape' && !busy) { deleteConfirm.hidden = true; requestDelete.focus(); } });
         const requestDelete = action('댓글 삭제', () => {
           if (busy || loading) return;
-          menu.open = false; deleteConfirm.hidden = false; cancel.focus();
+          deleteConfirm.hidden = false; cancel.focus();
         });
         requestDelete.className = 'feedback-menu-delete';
-        requestDelete.innerHTML = '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"/></svg><span>댓글 삭제</span>';
-        choices.append(requestDelete); menu.append(toggle, choices); head.append(menu);
+        requestDelete.setAttribute('aria-label', '댓글 삭제');
+        requestDelete.title = '댓글 삭제';
+        requestDelete.innerHTML = '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"/></svg>';
+        head.append(requestDelete);
       }
       const body = document.createElement('p');
       body.textContent = row.deleted_at ? '삭제된 댓글입니다.' : row.body;
       if (row.deleted_at) body.className = 'feedback-deleted';
       item.append(head, body);
       if (deleteConfirm) item.append(deleteConfirm);
-      if (isReply) return item;
+      if (isReply) { item.classList.add('feedback-reply'); return item; }
       const actions = document.createElement('div'); actions.className = 'feedback-comment-actions';
       if (!row.deleted_at) actions.append(action('답글', () => {
         if (!userId || busy || loading) return;

@@ -15,7 +15,8 @@ values (current_setting('igloo.count_test_a')::uuid, '접속 횟수 A', 'student
 insert into public.visit_participants(member_id, cohort, included_from)
 values (current_setting('igloo.count_test_a')::uuid, 1, (now() at time zone 'Asia/Seoul')::date),
        (current_setting('igloo.count_test_b')::uuid, 2, (now() at time zone 'Asia/Seoul')::date),
-       (current_setting('igloo.count_test_future')::uuid, 2, (now() at time zone 'Asia/Seoul')::date + 1);
+       (current_setting('igloo.count_test_future')::uuid, 2, (now() at time zone 'Asia/Seoul')::date + 1)
+on conflict(member_id) do update set cohort=excluded.cohort,included_from=excluded.included_from;
 -- 운영 DB에 기존 참여자 기록이 있어도 시험 증가분만 비교한다.
 select set_config('igloo.count_start_baseline',
   (select coalesce(sum(v.visit_count),0)::text from public.daily_visits v

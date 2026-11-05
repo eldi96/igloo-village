@@ -254,3 +254,36 @@ test('visit counts RPC supplies daily and cumulative visits without exposing raw
   assert.equal(counts[0].total_daily_visits, 5);
   assert.deepEqual(calls, [['get_visit_counts', { p_days: 14 }]]);
 });
+
+
+test('experiment dashboard validates the window and uses the approved-member RPC', async () => {
+  const member={id:'11111111-1111-4111-8111-111111111111',role:'student',approved:true};const calls=[];
+  const api={auth:{getUser:async()=>({data:{user:{id:member.id}}})},from(table){
+    if(table==='igloos')return {select:()=>({order:async()=>({data:homes})})};
+    if(table==='members')return {select:()=>({eq:()=>({maybeSingle:async()=>({data:member})})})};
+    throw Error('raw table read forbidden');
+  },rpc:async(name,args)=>{calls.push([name,args]);return {data:{members:[],daily:[]}};}};
+  const backend=createVillageBackend({config,loadSdk:async()=>({createClient:()=>api})});
+  for(const invalid of [0,91,1.5])await assert.rejects(backend.getVisitExperiment(invalid),/1~90/);
+  await backend.getVisitExperiment(30);
+  assert.deepEqual(calls,[['get_visit_experiment',{p_days:30}]]);
+});
+
+
+test('card themes validate input and use verified member RPCs', async () => {
+  const member={id:'11111111-1111-4111-8111-111111111111',role:'student',approved:true},calls=[];
+  const api={auth:{getUser:async()=>({data:{user:{id:member.id}}})},from(table){if(table==='igloos')return {select:()=>({order:async()=>({data:homes})})};if(table==='members')return {select:()=>({eq:()=>({maybeSingle:async()=>({data:member})})})};throw Error('unexpected table');},rpc:async(name,args)=>{calls.push([name,args]);return {data:{theme:'mint',unlocked:true,is_owner:true}};}};
+  const backend=createVillageBackend({config,loadSdk:async()=>({createClient:()=>api})});
+  await assert.rejects(backend.setCardTheme('neon'),/테마/);await assert.rejects(backend.getCardTheme(31),/이글루/);
+  assert.equal((await backend.getCardTheme(21)).theme,'mint');await backend.setCardTheme('mint');
+  assert.deepEqual(calls,[['get_igloo_card_theme',{p_home:21}],['set_card_theme',{p_theme:'mint'}]]);
+});
+
+
+test('exterior light RPCs allow only warm and blue for verified students', async()=>{
+ const member={id:'11111111-1111-4111-8111-111111111111',role:'student',approved:true},calls=[];
+ const api={auth:{getUser:async()=>({data:{user:{id:member.id}}})},from(table){if(table==='igloos')return {select:()=>({order:async()=>({data:homes})})};if(table==='members')return {select:()=>({eq:()=>({maybeSingle:async()=>({data:member})})})};throw Error('unexpected table');},rpc:async(name,args)=>{calls.push([name,args]);return {data:{color:'blue',unlocked:true}};}};
+ const backend=createVillageBackend({config,loadSdk:async()=>({createClient:()=>api})});
+ await assert.rejects(backend.setExteriorLight('pink'),/색상/);await backend.getExteriorLight();await backend.setExteriorLight('blue');
+ assert.deepEqual(calls,[['get_exterior_light',undefined],['set_exterior_light',{p_color:'blue'}]]);
+});
