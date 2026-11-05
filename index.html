@@ -52,7 +52,37 @@ import { createQualityControl } from './quality.js';
 window.__iglooBackendStatus = villageBackend.status;
 villageBackend.onStatusChange(status => { document.documentElement.dataset.supabase = status.phase; });
 villageBackend.connect().catch(error => { console.warn('Supabase 연결을 확인해주세요:', error.message); });
-const auth = mountAuth(villageBackend, { onChange: () => syncVillage() });
+// 동일한 페이지 방문에서 인증 상태 변경으로 중복 기록되지 않도록 관리
+let lastTrackedUserId = null;
+
+const auth = mountAuth(villageBackend, {
+  onChange: () => {
+    syncVillage().catch(error => {
+      console.warn('마을 상태 갱신 실패:', error.message);
+    });
+
+    const user = auth.user;
+    const member = auth.member;
+
+    // 로그아웃하면 기록 상태 초기화
+    if (!user) {
+      lastTrackedUserId = null;
+      return;
+    }
+
+    // 승인된 수강생만 방문 기록
+    if (!member?.approved || member.role !== 'student') return;
+
+    // 같은 페이지에서 인증 이벤트가 반복되어도 한 번만 호출
+    if (lastTrackedUserId === user.id) return;
+
+    lastTrackedUserId = user.id;
+
+    villageBackend.recordVisit().catch(error => {
+      console.warn('접속 기록 저장 실패:', error.message);
+    });
+  }
+});
 const chat = mountChat(villageBackend);
 
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
