@@ -1308,6 +1308,7 @@ async function goInside(ig) {
   fadeThrough(() => {
     mode = 'room';
     chat.setHidden(true);
+    count.hidden = true;
     if (room === iglooRoom) room.enter({ home: ig.home, isMine: ig.mine, ownerName: ig.mine ? auth.member?.display_name : ig.owner });
     renderPass.scene = room.scene;
     renderPass.camera = room.camera;
@@ -1325,6 +1326,7 @@ function goOutside(ig) {
     renderPass.camera = camera;
     mode = 'in';
     chat.setHidden(false);
+    count.hidden = false;
     setBar(ig.house ? '등대 입구' : `${ig.mine ? '내' : ig.owner + '의'} 이글루 앞이에요`, [['안으로 들어가기', () => goInside(ig), true], ['마을로 돌아가기', leave]]);
   });
 }

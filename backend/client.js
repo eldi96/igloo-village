@@ -3,7 +3,7 @@ import { supabaseConfig } from './config.js';
 // 마을의 3D 화면과 분리한 데이터 연결부. 권한은 DB의 RLS에서 검사한다.
 const SDK_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
 const HOME_COLUMNS = 'id,owner_id,is_public,claimed_at,latest_project_at';
-const PROJECT_COLUMNS = 'id,igloo_id,owner_id,title,description,url,created_at';
+const PROJECT_COLUMNS = 'id,igloo_id,owner_id,title,description,url,instructions,image_path,created_at';
 const MAIL_COLUMNS = 'id,sender_id,recipient_id,body,link,created_at,read_at';
 const CHAT_COLUMNS = 'id,sender_id,body,created_at';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -64,6 +64,12 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
     })();
     // 동기 설정 오류에서도 재시도가 가능하도록 실패한 promise를 해제한다.
     try { return await connection; } catch (error) { connection = null; throw error; }
+  }
+  async function withImage(api, row) {
+    if (!row.image_path) return { ...row, image_url: null };
+    const { data, error } = await api.storage.from('project-images').createSignedUrl(row.image_path, 3600);
+    if (error) console.warn('대표 이미지를 불러오지 못했어요:', error.message);
+    return { ...row, image_url: data?.signedUrl || null };
   }
   async function ready() { await connect(); return client; }
   async function requireMember(role = null) {
@@ -140,19 +146,98 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
     },
     async getProjects(id) {
       homeId(id); const { api } = await requireMember();
-      return unwrap(await api.from('projects').select(PROJECT_COLUMNS).eq('igloo_id', id).order('created_at', { ascending: false }).limit(100));
+      let result = await api.from('projects').select(PROJECT_COLUMNS).eq('igloo_id', id).order('created_at', { ascending: false }).limit(100);
+      // 공유 DB의 추가 열 적용 전에도 기존 프로젝트는 읽을 수 있게 한다.
+      if (result.error && ['42703', 'PGRST204'].includes(result.error.code)) {
+        result = await api.from('projects').select('id,igloo_id,owner_id,title,description,url,created_at').eq('igloo_id', id).order('created_at', { ascending: false }).limit(100);
+      }
+      const rows = unwrap(result);
+      return Promise.all(rows.map(row => withImage(api, row)));
     },
-    async addProject(id, { title, description = '', url }) {
+    async addProject(id, { title, description = '', instructions = '', url, image = null }) {
       homeId(id); const safeUrl = checkLink(url);
-      if (!title?.trim() || title.trim().length > 120 || description.length > 5000) throw new Error('제목과 설명 길이를 확인해주세요.');
+      if (!title?.trim() || title.trim().length > 120 || description.length > 5000 || instructions.length > 5000) throw new Error('제목, 설명과 사용법 길이를 확인해주세요.');
+      if (image && (!(image instanceof Blob) || image.type !== 'image/jpeg' || image.size > 5 * 1024 * 1024)) throw new Error('5MB 이하의 JPEG 이미지만 저장할 수 있어요.');
       const { api, member } = await requireMember('student');
-      return unwrap(await api.from('projects').insert({ igloo_id: id, owner_id: member.id, title: title.trim(), description, url: safeUrl }).select(PROJECT_COLUMNS).single());
+      let imagePath = null;
+      if (image) {
+        imagePath = `${member.id}/${crypto.randomUUID()}.jpg`;
+        const { error } = await api.storage.from('project-images').upload(imagePath, image, { contentType: 'image/jpeg', upsert: false });
+        if (error) throw new Error('이미지를 저장하지 못했어요. 이미지 저장소 설정과 연결을 확인해 주세요.');
+      }
+      let row;
+      try {
+        row = unwrap(await api.from('projects').insert({ igloo_id: id, owner_id: member.id, title: title.trim(), description: description.trim(), instructions: instructions.trim(), url: safeUrl, image_path: imagePath }).select(PROJECT_COLUMNS).single());
+      } catch (error) {
+        if (imagePath) await api.storage.from('project-images').remove([imagePath]).catch(() => {});
+        if (['42703', 'PGRST204'].includes(error.code)) throw new Error('프로젝트 저장 항목이 아직 준비되지 않았어요. 관리자에게 DB 업데이트를 요청해 주세요.');
+        throw error;
+      }
+      return withImage(api, row);
+    },
+    async updateProject(id, { title, description = '', instructions = '', url, image = null }) {
+      if (!UUID.test(id)) throw new Error('존재하지 않는 프로젝트입니다.');
+      const safeUrl = checkLink(url);
+      if (!title?.trim() || title.trim().length > 120 || description.length > 5000 || instructions.length > 5000) throw new Error('제목, 설명과 사용법 길이를 확인해주세요.');
+      if (image && (!(image instanceof Blob) || image.type !== 'image/jpeg' || image.size > 5 * 1024 * 1024)) throw new Error('5MB 이하의 JPEG 이미지만 저장할 수 있어요.');
+      const { api, member } = await requireMember('student');
+      const previous = unwrap(await api.from('projects').select('id,image_path').eq('id', id).eq('owner_id', member.id).single());
+      const changes = { title: title.trim(), description: description.trim(), instructions: instructions.trim(), url: safeUrl };
+      let uploaded = null;
+      if (image) {
+        uploaded = `${member.id}/${crypto.randomUUID()}.jpg`;
+        const { error } = await api.storage.from('project-images').upload(uploaded, image, { contentType: 'image/jpeg', upsert: false });
+        if (error) throw new Error('새 이미지를 저장하지 못했어요. 다시 시도해 주세요.');
+        changes.image_path = uploaded;
+      }
+      let row;
+      try {
+        row = unwrap(await api.from('projects').update(changes).eq('id', id).eq('owner_id', member.id).select(PROJECT_COLUMNS).single());
+      } catch (error) {
+        if (uploaded) await api.storage.from('project-images').remove([uploaded]).catch(() => {});
+        throw error;
+      }
+      if (uploaded && previous.image_path) {
+        const { error } = await api.storage.from('project-images').remove([previous.image_path]);
+        if (error) console.warn('이전 이미지 정리가 필요해요:', error.message);
+      }
+      return withImage(api, row);
     },
     async deleteProject(id) {
       if (!UUID.test(id)) throw new Error('존재하지 않는 프로젝트입니다.');
       const { api, member } = await requireMember('student');
-      const { error } = await api.from('projects').delete().eq('id', id).eq('owner_id', member.id);
-      if (error) throw error;
+      const rows = unwrap(await api.from('projects').delete().eq('id', id).eq('owner_id', member.id).select('image_path'));
+      const paths = rows.map(row => row.image_path).filter(Boolean);
+      if (paths.length) {
+        const { error } = await api.storage.from('project-images').remove(paths);
+        if (error) console.warn('남은 대표 이미지 정리가 필요해요:', error.message);
+      }
+    },
+    async getProjectFeedback(projectId) {
+      if (!UUID.test(projectId)) throw new Error('존재하지 않는 프로젝트입니다.');
+      const { api } = await requireMember();
+      const [comments, reactions] = await Promise.all([
+        api.from('project_comments').select('id,member_id,body,created_at,members(display_name)').eq('project_id', projectId).order('created_at', { ascending: false }).limit(100),
+        api.from('project_reactions').select('member_id,emoji').eq('project_id', projectId).limit(1000)
+      ]);
+      return { comments: unwrap(comments), reactions: unwrap(reactions) };
+    },
+    async addProjectComment(projectId, body) {
+      const text = String(body ?? '').trim();
+      if (!UUID.test(projectId) || !text || text.length > 1000) throw new Error('댓글은 1~1,000자로 작성해 주세요.');
+      const { api, member } = await requireMember();
+      return unwrap(await api.from('project_comments').insert({ project_id: projectId, member_id: member.id, body: text }).select('id').single());
+    },
+    async setProjectReaction(projectId, emoji, active) {
+      if (!UUID.test(projectId) || !['👍', '❤️'].includes(emoji)) throw new Error('올바른 프로젝트와 반응을 선택해 주세요.');
+      const { api, member } = await requireMember();
+      if (active) {
+        const { error } = await api.from('project_reactions').insert({ project_id: projectId, member_id: member.id, emoji });
+        if (error && error.code !== '23505') throw error;
+      } else {
+        const { error } = await api.from('project_reactions').delete().eq('project_id', projectId).eq('member_id', member.id).eq('emoji', emoji);
+        if (error) throw error;
+      }
     },
     async getInbox() {
       const { api, member } = await requireMember();

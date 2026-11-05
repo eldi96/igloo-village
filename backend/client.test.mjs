@@ -71,3 +71,71 @@ test('invalid home IDs and unsafe links fail before connection or mutation', asy
   await assert.rejects(backend.deleteProject('not-a-project'), /프로젝트/);
   assert.equal(loaded, false);
 });
+
+
+function projectSdk({ insertError = null, uploadError = null } = {}) {
+  const member = { id: '11111111-1111-4111-8111-111111111111', role: 'student', approved: true };
+  const calls = { uploads: [], removed: [], inserted: null };
+  let stored;
+  const api = {
+    auth: { getUser: async () => ({ data: { user: { id: member.id } } }) },
+    from(table) {
+      if (table === 'igloos') return { select: () => ({ order: async () => ({ data: homes }) }) };
+      if (table === 'members') return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: member }) }) }) };
+      assert.equal(table, 'projects');
+      return { insert(payload) {
+        calls.inserted = payload;
+        stored = { ...payload, id: '22222222-2222-4222-8222-222222222222' };
+        return { select: () => ({ single: async () => ({ data: stored, error: insertError }) }) };
+      } };
+    },
+    storage: { from(bucket) {
+      assert.equal(bucket, 'project-images');
+      return {
+        upload: async (path, blob) => { calls.uploads.push({ path, blob }); return { error: uploadError }; },
+        remove: async paths => { calls.removed.push(...paths); return { error: null }; },
+        createSignedUrl: async () => ({ data: { signedUrl: 'https://testproject.supabase.co/signed-image' } })
+      };
+    } }
+  };
+  return { calls, backend: createVillageBackend({ config, loadSdk: async () => ({ createClient: () => api }) }) };
+}
+const manualProject = () => ({ title: '내 프로젝트', url: 'https://example.com', description: '소개', instructions: '1. 시작\n2. 사용', image: new Blob(['image'], { type: 'image/jpeg' }) });
+test('manual project saves text and owner-scoped image and returns its display URL', async () => {
+  const { backend, calls } = projectSdk();
+  const project = await backend.addProject(0, manualProject());
+  assert.equal(calls.inserted.instructions, '1. 시작\n2. 사용');
+  assert.equal(calls.inserted.description, '소개');
+  assert.match(calls.uploads[0].path, /^11111111-1111-4111-8111-111111111111\/[0-9a-f-]+\.jpg$/);
+  assert.equal(calls.inserted.image_path, calls.uploads[0].path);
+  assert.equal(project.image_url, 'https://testproject.supabase.co/signed-image');
+});
+test('failed project insertion cleans up the already uploaded image', async () => {
+  const { backend, calls } = projectSdk({ insertError: new Error('insert failed') });
+  await assert.rejects(backend.addProject(0, manualProject()), /insert failed/);
+  assert.deepEqual(calls.removed, [calls.uploads[0].path]);
+});
+test('failed image upload never creates a project', async () => {
+  const { backend, calls } = projectSdk({ uploadError: new Error('upload failed') });
+  await assert.rejects(backend.addProject(0, manualProject()), /이미지를 저장/);
+  assert.equal(calls.inserted, null);
+});
+test('oversized instructions and non-JPEG images fail before loading SDK', async () => {
+  let loaded = false;
+  const backend = createVillageBackend({ config, loadSdk: async () => { loaded = true; throw new Error('unexpected'); } });
+  await assert.rejects(backend.addProject(0, { ...manualProject(), instructions: 'a'.repeat(5001) }), /길이/);
+  await assert.rejects(backend.addProject(0, { ...manualProject(), image: new Blob(['svg'], { type: 'image/svg+xml' }) }), /JPEG/);
+  assert.equal(loaded, false);
+});
+
+
+test('feedback rejects invalid IDs, blank or oversized comments and unsupported reactions before connection', async () => {
+  let loaded = false;
+  const backend = createVillageBackend({ config, loadSdk: async () => { loaded = true; throw new Error('unexpected'); } });
+  const id = '11111111-1111-4111-8111-111111111111';
+  await assert.rejects(backend.getProjectFeedback('invalid'), /프로젝트/);
+  await assert.rejects(backend.addProjectComment(id, '   '), /댓글/);
+  await assert.rejects(backend.addProjectComment(id, 'a'.repeat(1001)), /댓글/);
+  await assert.rejects(backend.setProjectReaction(id, 'invalid', true), /반응/);
+  assert.equal(loaded, false);
+});

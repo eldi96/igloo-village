@@ -28,7 +28,17 @@ do $$ begin
   begin perform public.claim_igloo(1::smallint); raise exception 'FAIL: duplicate ownership'; exception when unique_violation then null; end;
   begin update public.members set role = 'instructor' where id = auth.uid(); raise exception 'FAIL: self promotion'; exception when insufficient_privilege then null; end;
 end $$;
-insert into public.projects(igloo_id, owner_id, title, url) values (0, auth.uid(), '비공개 검증 프로젝트', 'https://example.test/project');
+insert into public.projects(igloo_id, owner_id, title, url, description, instructions, image_path)
+values (0, auth.uid(), '비공개 검증 프로젝트', 'https://example.test/project', '직접 작성한 설명', '첫 단계', auth.uid()::text || '/00000000-0000-4000-8000-000000000000.jpg');
+do $$ begin
+  if not exists (select 1 from public.projects where owner_id = auth.uid() and instructions = '첫 단계' and description = '직접 작성한 설명') then
+    raise exception 'FAIL: manual project fields';
+  end if;
+  begin
+    update public.projects set image_path = '00000000-0000-4000-8000-000000000000/00000000-0000-4000-8000-000000000000.jpg' where owner_id = auth.uid();
+    raise exception 'FAIL: foreign image path';
+  exception when check_violation then null; end;
+end $$;
 do $$ begin
   if (select count(*) from public.projects where igloo_id = 0) <> 1 then raise exception 'FAIL: owner project read'; end if;
 end $$;
@@ -88,5 +98,9 @@ do $$ declare affected integer; begin
   begin update public.mail_messages set body = '변조'; raise exception 'FAIL: recipient edits message'; exception when insufficient_privilege then null; end;
 end $$;
 reset role;
+do $$ begin
+  if not exists (select 1 from pg_class where oid = 'public.project_comments'::regclass and relrowsecurity) or not exists (select 1 from pg_class where oid = 'public.project_reactions'::regclass and relrowsecurity) then raise exception 'FAIL: feedback RLS'; end if;
+  if has_table_privilege('anon', 'public.project_comments', 'SELECT') or has_table_privilege('anon', 'public.project_reactions', 'INSERT') then raise exception 'FAIL: anonymous feedback grants'; end if;
+end $$;
 select 'PASS: map grants, unique claims, role protection, private/public projects, instructor access, atomic delivery, inbox isolation, read markers' as security_verification;
 rollback;

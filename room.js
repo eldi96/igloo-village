@@ -1,6 +1,7 @@
 // 일반 이글루 내부. 언리얼 작업이 나오기 전까지 쓰는 임시 3D 방이다.
 // 빛과 그림자는 텍스처에 미리 그려 그림자 계산 없이 가볍게 돌린다.
 import * as THREE from 'three';
+import { mountProjectFeedback } from './project-feedback.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 const STYLE = `
@@ -9,14 +10,20 @@ const STYLE = `
   .room-label { position: fixed; z-index: 3; transform: translate(-50%, -100%); padding: 4px 12px; border: 1px solid rgba(255,226,190,.42); border-radius: 13px; background: rgba(38,18,10,.74); color: #fff3e4; font: 500 12px/1.5 "Segoe UI", "Malgun Gothic", system-ui, sans-serif; white-space: nowrap; pointer-events: none; }
   .room-label[data-empty="true"] { background: rgba(255,232,205,.2); color: #fff3e4; }
   .room-label[data-active="true"] { border-color: #ffe9cf; background: #fff0dd; color: #3a1a0a; }
-  .room-veil { position: fixed; z-index: 5; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(26,10,4,.36); }
-  .room-form { box-sizing: border-box; width: min(400px, 100%); padding: 26px; border: 1px solid rgba(255,226,190,.2); border-radius: 18px; background: rgb(40,21,13); box-shadow: 0 18px 60px rgba(20,7,2,.5); transition: opacity 160ms cubic-bezier(.23,1,.32,1), transform 160ms cubic-bezier(.23,1,.32,1); }
+  .room-veil { position: fixed; z-index: 5; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(18,12,10,.22); }
+  .room-form { box-sizing: border-box; width: min(940px, 100%); max-height: calc(100dvh - 40px); overflow-y: auto; padding: 26px; border: 1px solid rgba(255,245,230,.38); border-radius: 26px; background: linear-gradient(135deg, rgba(255,239,219,.2), rgba(38,24,19,.62)); backdrop-filter: blur(18px) saturate(125%); -webkit-backdrop-filter: blur(18px) saturate(125%); box-shadow: 0 24px 72px rgba(16,9,6,.32), inset 0 1px rgba(255,255,255,.45), inset 0 -1px rgba(255,255,255,.06); scrollbar-width: thin; scrollbar-color: rgba(255,239,219,.3) transparent; transition: opacity 160ms cubic-bezier(.23,1,.32,1), transform 160ms cubic-bezier(.23,1,.32,1); }
   @starting-style { .room-form { opacity: 0; transform: translateY(6px) scale(.98); } }
   .room-form h2 { margin: 0 0 6px; font-size: 18px; font-weight: 600; letter-spacing: -.01em; }
   .room-form p { margin: 0; color: #e2c5ab; text-wrap: balance; }
   .room-form label { display: block; margin-top: 18px; color: #e2c5ab; font-size: 12px; }
-  .room-form input { display: block; box-sizing: border-box; width: 100%; height: 44px; margin-top: 6px; padding: 0 12px; border: 1px solid rgba(255,226,190,.26); border-radius: 10px; background: rgba(255,226,190,.07); color: #fff6ea; font: inherit; font-size: 15px; }
+  .room-form input { display: block; box-sizing: border-box; width: 100%; height: 44px; margin-top: 6px; padding: 0 12px; border: 1px solid rgba(255,226,190,.26); border-radius: 10px; background: rgba(24,16,13,.26); box-shadow: inset 0 1px 3px rgba(0,0,0,.08); color: #fff6ea; font: inherit; font-size: 15px; }
   .room-form input:focus { outline: 2px solid #ffe9cf; outline-offset: 1px; }
+  .room-form textarea { box-sizing: border-box; width: 100%; min-height: 90px; margin-top: 6px; padding: 10px 12px; resize: vertical; border: 1px solid rgba(255,226,190,.26); border-radius: 10px; background: rgba(24,16,13,.26); box-shadow: inset 0 1px 3px rgba(0,0,0,.08); color: #fff6ea; font: inherit; }
+  .room-form textarea:focus { outline: 2px solid #ffe9cf; outline-offset: 1px; }
+  .room-preview { display: block; width: 100%; max-height: 180px; object-fit: contain; margin-top: 10px; border-radius: 10px; }
+  .room-shot img { display: block; width: 100%; height: 100%; object-fit: contain; }
+  .room-shot p { color: #704c38; text-align: center; padding: 32px 12px; }
+  .room-desc, .room-howto p { white-space: pre-wrap; overflow-wrap: anywhere; }
   .room-error { margin-top: 10px !important; color: #ffb9a4 !important; font-size: 13px; }
   .room-error:empty { display: none; }
   .room-actions { display: flex; gap: 8px; margin-top: 18px; }
@@ -24,14 +31,14 @@ const STYLE = `
   .room-btn:active:not(:disabled) { transform: scale(.97); }
   .room-btn:disabled { opacity: .55; cursor: progress; }
   .room-btn.primary { flex: 1; border-color: #fff0dd; background: #fff0dd; color: #3a1a0a; font-weight: 600; }
-  .room-card { position: fixed; z-index: 4; top: 24px; right: 24px; bottom: 24px; display: flex; flex-direction: column; box-sizing: border-box; width: min(440px, calc(100vw - 32px)); padding: 26px 28px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid rgba(255,226,190,.24); border-radius: 26px; background: rgba(40,21,13,.93); box-shadow: 0 18px 60px rgba(20,7,2,.42), inset 0 1px rgba(255,226,190,.08); transition: opacity 180ms cubic-bezier(.23,1,.32,1), transform 180ms cubic-bezier(.23,1,.32,1); }
-  @starting-style { .room-card { opacity: 0; transform: translateX(12px); } }
+  .room-card { position: fixed; z-index: 4; top: 24px; right: 24px; bottom: 24px; display: flex; flex-direction: column; box-sizing: border-box; width: min(clamp(440px, 38.1966vw, 960px), calc(100vw - 48px)); padding: 0; overflow: visible; border: 1px solid rgba(255,245,230,.38); border-radius: 26px; background: linear-gradient(145deg, rgba(255,239,219,.22), rgba(47,31,24,.48)); backdrop-filter: blur(18px) saturate(125%); -webkit-backdrop-filter: blur(18px) saturate(125%); box-shadow: 0 24px 64px rgba(16,9,6,.28), inset 0 1px rgba(255,255,255,.45), inset 0 -1px rgba(255,255,255,.06); transition: opacity 260ms ease, transform 260ms cubic-bezier(.23,1,.32,1); }
+  @starting-style { .room-card { opacity: 0; transform: translateX(calc(100% + 80px)); } }
   .room-card-top { display: flex; align-items: center; justify-content: space-between; flex: none; }
   .room-pager { display: flex; align-items: center; gap: 4px; color: #e2c5ab; font-size: 13px; font-variant-numeric: tabular-nums; }
   .room-icon { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 9px; background: transparent; color: #f0d8c2; cursor: pointer; touch-action: manipulation; transition: transform 120ms cubic-bezier(.23,1,.32,1), background-color 120ms ease; }
   .room-icon:active:not(:disabled) { transform: scale(.94); }
   .room-icon:disabled { opacity: .3; cursor: default; }
-  .room-shot { flex: none; aspect-ratio: 16 / 9; margin-top: 12px; overflow: hidden; border-radius: 14px; background: #f8f3ec; }
+  .room-shot { flex: none; aspect-ratio: 1.618034 / 1; margin-top: 12px; overflow: hidden; border-radius: 14px; background: #f8f3ec; }
   .room-shot svg { display: block; width: 100%; height: 100%; }
   .room-author { display: flex; align-items: center; gap: 10px; flex: none; margin-top: 18px; color: #f0d8c2; font-size: 13px; }
   .room-avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #d67030; color: #fff6ea; font-weight: 600; }
@@ -45,21 +52,70 @@ const STYLE = `
   .room-btn.quiet { min-height: 36px; border-color: transparent; color: #e2c5ab; font-size: 13px; font-weight: 400; }
   .room-ui button:focus-visible, .room-ui a:focus-visible { outline: 2px solid #fff0dd; outline-offset: 2px; }
   @media (hover: hover) and (pointer: fine) { .room-btn:hover:not(:disabled) { background: rgba(255,226,190,.12); } .room-btn.primary:hover:not(:disabled) { background: #fff; } .room-icon:hover:not(:disabled) { background: rgba(255,226,190,.12); color: #fff; } }
-  @media (max-width: 720px) { .room-card { top: auto; right: 0; bottom: 0; width: 100%; max-height: 82dvh; padding: 20px; border-width: 1px 0 0; border-radius: 22px 22px 0 0; } @starting-style { .room-card { opacity: 0; transform: translateY(16px); } } }
+  @media (max-width: 720px) { .room-card { top: auto; right: 0; bottom: 0; width: calc(100% - 36px); height: 82dvh; max-height: 82dvh; padding: 0; border-width: 1px 0 0; border-radius: 22px 22px 0 0; } @starting-style { .room-card { opacity: 0; transform: translateX(calc(100% + 80px)); } } }
+  .room-form-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .85fr); gap: 28px; margin-top: 16px; }
+  .room-form-fields, .room-form-image { min-width: 0; }
+  .room-form-fields label { margin-top: 12px; }
+  .room-form-fields label:first-child, .room-form-image label { margin-top: 0; }
+  .room-form textarea { min-height: 88px; }
+  .room-form-image input[type=file] { height: auto; min-height: 44px; padding: 8px; font-size: 12px; }
+  .room-form-image input::file-selector-button { padding: 7px 10px; margin-right: 8px; border: 1px solid rgba(255,226,190,.28); border-radius: 7px; background: rgba(255,239,219,.12); color: #fff3e4; cursor: pointer; }
+  .room-form-image > p { margin-top: 8px; font-size: 12px; }
+  .room-preview-frame { position: relative; display: grid; place-items: center; height: 270px; margin-top: 14px; overflow: hidden; border: 1px dashed rgba(255,245,230,.34); border-radius: 14px; background: linear-gradient(145deg, rgba(255,246,230,.09), rgba(24,16,13,.16)); box-shadow: inset 0 1px rgba(255,255,255,.1); }
+  .room-preview-frame > span { color: #cdb29a; font-size: 12px; }
+  .room-preview-frame .room-preview { position: absolute; inset: 0; width: 100%; height: 100%; max-height: none; margin: 0; border-radius: 0; background: rgba(24,16,13,.18); object-fit: contain; }
+  .room-card .room-shot { border: 1px solid rgba(255,255,255,.2); background: rgba(255,244,228,.09); box-shadow: inset 0 1px rgba(255,255,255,.15); }
+  .room-card .room-desc, .room-card .room-howto p { color: #fff0df; }
+  .room-card .room-howto { padding: 16px; border: 1px solid rgba(255,255,255,.16); border-radius: 14px; background: rgba(23,15,12,.2); }
+  .room-card { scrollbar-width: thin; scrollbar-color: rgba(255,239,219,.3) transparent; }
+  @media (max-width: 720px) { .room-form { padding: 20px; } .room-form-layout { grid-template-columns: 1fr; gap: 20px; } .room-preview-frame { height: 190px; } }
+  .project-feedback { flex: none; margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,.2); }
+  .feedback-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .feedback-head h3 { margin: 0; font-size: 16px; }
+  .feedback-reactions { display: flex; gap: 8px; }
+  .feedback-reactions button { display: flex; align-items: center; gap: 8px; padding: 8px 13px; border: 1px solid rgba(255,255,255,.24); border-radius: 999px; background: rgba(255,255,255,.07); color: #fff3e4; font: inherit; cursor: pointer; }
+  .feedback-reactions button { transition: background-color 120ms ease, border-color 120ms ease; }
+  @media (hover: hover) { .feedback-reactions button:hover:not(:disabled) { background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.5); } }
+  .feedback-reactions button[aria-busy=true] { cursor: progress; }
+  .feedback-reactions button[aria-pressed=true] { border-color: rgba(255,222,179,.8); background: rgba(255,222,179,.22); }
+  .feedback-reactions button:disabled { opacity: .5; cursor: default; }
+  .feedback-status { font-size: 12px; color: #ffe2c4; }
+  .feedback-status { min-height: 20px; margin: 8px 0; }
+  .feedback-list { list-style: none; margin: 16px 0; padding: 0; max-height: 280px; overflow-y: auto; scrollbar-width: thin; }
+  .feedback-list li { padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,.12); }
+  .feedback-comment-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+  .feedback-comment-head time, .feedback-empty { color: #e2c5ab; font-size: 12px; }
+  .feedback-list p { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .feedback-form label { display: block; font-size: 12px; color: #fff0df; }
+  .feedback-form textarea { box-sizing: border-box; width: 100%; min-height: 84px; resize: vertical; margin-top: 8px; padding: 12px; border: 1px solid rgba(255,255,255,.24); border-radius: 12px; background: rgba(24,16,13,.22); color: #fff3e4; font: inherit; }
+  .feedback-form textarea:focus-visible { outline: 2px solid #fff0dd; outline-offset: 2px; }
+  .feedback-submit { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
+  .feedback-submit > span { color: #e2c5ab; font-size: 11px; }
+  .room-card-body { display: flex; flex-direction: column; box-sizing: border-box; height: 100%; min-height: 0; padding: clamp(24px, 2.1vw, 42px); overflow-y: auto; overscroll-behavior: contain; border-radius: inherit; scrollbar-width: thin; scrollbar-color: rgba(255,239,219,.3) transparent; }
+  .room-card.is-closing { opacity: 0; transform: translateX(calc(100% + 80px)); pointer-events: none; }
+  .room-card-dismiss { position: absolute; left: 0; top: 50%; transform: translate(-50%, -50%); display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid rgba(255,245,230,.38); border-radius: 50%; background: transparent; color: #fff3e4; cursor: pointer; box-shadow: none; }
+  .room-card-dismiss:hover { background: rgba(255,255,255,.1); }
+  .room-card .feedback-submit .room-btn { transform: none; transition: background-color 120ms ease; }
+  @media (max-width: 720px) { .room-card-body { padding: 20px; } }
   @media (prefers-reduced-motion: reduce) { .room-form, .room-card { transition-property: opacity; } @starting-style { .room-form, .room-card { transform: none; } } .room-btn:active:not(:disabled), .room-icon:active:not(:disabled) { transform: none; } }
 `;
 
 const DOME_R = 12;
 const WINDOW_PHI = 2.45;
-const BOXES = [
-  { angle: 0.35, w: 2.1, h: 0.95, d: 1.75 },
-  { angle: 2.45, w: 2.1, h: 1.2, d: 1.75 },
-  { angle: 4.55, w: 2.1, h: 1.0, d: 1.75 }
-];
-const BOX_RING = 3.0;
+const ROOM_YAW = 3.5;
+// 왼쪽에서 뒤쪽으로 이어지는 벽을 따라 같은 간격으로 놓는다.
+const BOX_RING = DOME_R - 1.4;
+const BOXES = [-0.95, -0.65, -0.35].map(offset => ({
+  angle: ROOM_YAW + Math.PI + offset, w: 2.1, h: 1.0, d: 1.75
+}));
 // 빛이 들어오는 방향. 창에서 방 안쪽으로 향한다.
 const toWindow = new THREE.Vector3(-Math.cos(WINDOW_PHI), 0, Math.sin(WINDOW_PHI));
-const boxAt = box => ({ x: Math.cos(box.angle) * BOX_RING, z: Math.sin(box.angle) * BOX_RING, yaw: -box.angle + Math.PI / 2 });
+const boxAt = box => ({
+  x: Math.cos(box.angle) * BOX_RING,
+  z: Math.sin(box.angle) * BOX_RING,
+  // 뒷면은 벽의 접선과 나란히, 앞면은 방 중심을 향한다.
+  yaw: -box.angle - Math.PI / 2
+});
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 function makeCanvas(w, h) {
@@ -229,7 +285,7 @@ const ICON_CLOSE = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" 
 const ICON_PREV = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2L4 7l5 5"/></svg>';
 const ICON_NEXT = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2l5 5-5 5"/></svg>';
 // 첫 화면 캡처가 생기기 전까지 쓰는 예시 그림.
-const SAMPLE_SHOT = `<svg viewBox="0 0 640 360" role="img" aria-label="첫 화면 예시 이미지"><rect width="640" height="360" fill="#f8f3ec"/><rect width="640" height="40" fill="#ecdfd0"/><circle cx="24" cy="20" r="6" fill="#e97860"/><circle cx="46" cy="20" r="6" fill="#eeba5c"/><circle cx="68" cy="20" r="6" fill="#7ebe80"/><rect x="104" y="11" width="432" height="18" rx="9" fill="#f8f3ec"/><rect x="36" y="74" width="250" height="22" rx="7" fill="#4a2e1e"/><rect x="36" y="110" width="180" height="12" rx="6" fill="#d0c0b0"/><rect x="36" y="146" width="128" height="38" rx="10" fill="#d67030"/><rect x="36" y="216" width="84" height="104" rx="10" fill="#f0e6da"/><rect x="134" y="216" width="84" height="104" rx="10" fill="#f0e6da"/><rect x="232" y="216" width="84" height="104" rx="10" fill="#f0e6da"/><rect x="378" y="246" width="36" height="74" rx="7" fill="#eca870"/><rect x="430" y="200" width="36" height="120" rx="7" fill="#d67030"/><rect x="482" y="228" width="36" height="92" rx="7" fill="#eca870"/><rect x="534" y="170" width="36" height="150" rx="7" fill="#d67030"/><text x="604" y="346" text-anchor="end" font-size="13" fill="#a08e7c" font-family="sans-serif">예시 이미지</text></svg>`;
+
 
 export function createRoom({ canvas, backend }) {
   const style = document.createElement('style');
@@ -310,22 +366,81 @@ export function createRoom({ canvas, backend }) {
   const formVeil = document.createElement('div');
   formVeil.className = 'room-ui room-veil';
   formVeil.hidden = true;
-  formVeil.innerHTML = `<form class="room-form" role="dialog" aria-modal="true" aria-labelledby="room-form-title" novalidate><h2 id="room-form-title">이 상자에 프로젝트 올리기</h2><p>링크를 넣으면 상자 위에 오브젝트가 생겨요.</p><label>프로젝트 링크<input name="link" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://" maxlength="2048"></label><p class="room-error" role="alert"></p><div class="room-actions"><button type="submit" class="room-btn primary">올리기</button><button type="button" class="room-btn" data-cancel>취소</button></div></form>`;
+  formVeil.innerHTML = `<form class="room-form" role="dialog" aria-modal="true" aria-labelledby="room-form-title"><h2 id="room-form-title">이 상자에 프로젝트 올리기</h2><p>직접 작성한 소개와 이미지가 프로젝트 카드에 표시돼요.</p><div class="room-form-layout"><div class="room-form-fields"><label>프로젝트 이름<input name="title" required maxlength="120" placeholder="프로젝트 이름"></label><label>프로젝트 링크<input name="link" type="text" inputmode="url" required autocomplete="off" spellcheck="false" placeholder="https://" maxlength="2048"></label><label>프로젝트 설명<textarea name="description" required maxlength="5000" placeholder="어떤 서비스인지 소개해 주세요."></textarea></label><label>사용법<textarea name="instructions" required maxlength="5000" placeholder="시작 방법과 주요 기능을 순서대로 적어 주세요."></textarea></label></div><section class="room-form-image"><label>대표 이미지<input name="image" type="file" accept="image/png,image/jpeg,image/webp" required></label><p>이미지 1장 · PNG·JPG·WebP, 최대 5MB</p><div class="room-preview-frame"><span>대표 이미지를 선택해 주세요</span><img class="room-preview" alt="선택한 대표 이미지 미리보기" hidden></div></section></div><p class="room-error" role="alert"></p><div class="room-actions"><button type="submit" class="room-btn primary">올리기</button><button type="button" class="room-btn" data-cancel>취소</button></div></form>`;
   const card = document.createElement('aside');
   card.className = 'room-ui room-card';
   card.hidden = true;
   card.setAttribute('aria-label', '프로젝트 상세');
-  card.innerHTML = `<div class="room-card-top"><div class="room-pager"><button type="button" class="room-icon" data-prev aria-label="이전 프로젝트">${ICON_PREV}</button><span data-count></span><button type="button" class="room-icon" data-next aria-label="다음 프로젝트">${ICON_NEXT}</button></div><button type="button" class="room-icon" data-close aria-label="카드 닫기">${ICON_CLOSE}</button></div><div class="room-shot">${SAMPLE_SHOT}</div><div class="room-author"><span class="room-avatar" data-avatar></span><span data-owner></span></div><h2 data-title></h2><div class="room-link" data-host></div><p class="room-desc">프로젝트 설명이 들어갈 자리예요. 지금은 임시 문구입니다.</p><div class="room-howto"><h3>사용법</h3><ol><li>프로젝트 열기를 눌러 링크로 이동해요.</li><li>안내에 따라 사용해요.</li></ol></div><div class="room-card-actions"><a class="room-btn primary" data-open target="_blank" rel="noopener noreferrer">프로젝트 열기 →</a><button type="button" class="room-btn quiet" data-remove>이 상자 비우기</button></div><p class="room-error" role="alert" data-card-error></p>`;
+  card.innerHTML = `<div class="room-card-top"><div class="room-pager"><button type="button" class="room-icon" data-prev aria-label="이전 프로젝트">${ICON_PREV}</button><button type="button" class="room-icon" data-next aria-label="다음 프로젝트">${ICON_NEXT}</button></div></div><div class="room-shot"><img data-image alt="" hidden><p data-no-image>등록된 이미지가 없어요.</p></div><div class="room-author"><span class="room-avatar" data-avatar></span><span data-owner></span></div><h2 data-title></h2><div class="room-link" data-host></div><p class="room-desc" data-description></p><div class="room-howto"><h3>사용법</h3><p data-instructions></p></div><div class="room-card-actions"><a class="room-btn primary" data-open target="_blank" rel="noopener noreferrer">프로젝트 열기 →</a><button type="button" class="room-btn" data-edit>프로젝트 수정</button><button type="button" class="room-btn quiet" data-remove>이 상자 비우기</button></div><p class="room-error" role="alert" data-card-error></p><section class="project-feedback" aria-label="댓글과 반응"></section>`;
+  const cardBody = document.createElement('div');
+  cardBody.className = 'room-card-body';
+  cardBody.append(...card.childNodes);
+  card.append(cardBody);
+  const dismiss = document.createElement('button');
+  dismiss.type = 'button';
+  dismiss.className = 'room-card-dismiss';
+  dismiss.dataset.close = '';
+  dismiss.setAttribute('aria-label', '프로젝트 카드 오른쪽으로 닫기');
+  dismiss.innerHTML = '<svg width="18" height="24" viewBox="0 0 18 24" fill="none" aria-hidden="true"><path d="m6 5 7 7-7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  card.append(dismiss);
+  let closeCardTimer = null;
   document.body.append(labels, formVeil, card);
 
+  const feedback = mountProjectFeedback(card.querySelector('.project-feedback'), backend);
   const q = selector => card.querySelector(selector);
   const form = formVeil.querySelector('form');
   const linkInput = form.elements.link;
+  const imageInput = form.elements.image;
+  const preview = form.querySelector('.room-preview');
+  let previewUrl = null, saving = false;
+  function clearPreview() {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
+    preview.removeAttribute('src');
+    preview.hidden = true;
+  }
+  imageInput.addEventListener('change', () => {
+    clearPreview();
+    const file = imageInput.files[0];
+    if (imageInput.files.length > 1) {
+      imageInput.value = '';
+      formError.textContent = '대표 이미지는 한 장만 선택해 주세요.';
+      return;
+    }
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+      imageInput.value = '';
+      formError.textContent = '5MB 이하의 PNG·JPG·WebP 이미지를 선택해 주세요.';
+      return;
+    }
+    formError.textContent = '';
+    previewUrl = URL.createObjectURL(file);
+    preview.src = previewUrl;
+    preview.hidden = false;
+  });
+  async function prepareImage(file) {
+    let bitmap;
+    try { bitmap = await createImageBitmap(file); }
+    catch { throw new Error('이미지를 읽을 수 없어요. 다른 파일을 선택해 주세요.'); }
+    try {
+      const ratio = Math.min(1, 1280 / Math.max(bitmap.width, bitmap.height));
+      const imageCanvas = document.createElement('canvas');
+      imageCanvas.width = Math.max(1, Math.round(bitmap.width * ratio));
+      imageCanvas.height = Math.max(1, Math.round(bitmap.height * ratio));
+      const ctx = imageCanvas.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, imageCanvas.width, imageCanvas.height);
+      ctx.drawImage(bitmap, 0, 0, imageCanvas.width, imageCanvas.height);
+      const blob = await new Promise(resolve => imageCanvas.toBlob(resolve, 'image/jpeg', 0.85));
+      if (!blob) throw new Error('이미지를 준비하지 못했어요.');
+      return blob;
+    } finally { bitmap.close(); }
+  }
   const formError = form.querySelector('.room-error');
   const submitBtn = form.querySelector('[type=submit]');
 
   // 시점: 방 가운데를 중심으로 어느 방향으로든 돌 수 있다. 위아래와 거리는 벽을 벗어나지 않게 제한한다.
-  const START = { yaw: 3.5, pitch: 0.26, radius: 9 };
+  const START = { yaw: ROOM_YAW, pitch: 0.26, radius: 9 };
   const view = { ...START, targetYaw: START.yaw, targetPitch: START.pitch, targetRadius: START.radius };
   const LIMIT = { pitchMin: 0.12, pitchMax: 0.72, radiusMin: 5, radiusMax: 9.8 };
   const clampView = () => {
@@ -362,7 +477,7 @@ export function createRoom({ canvas, backend }) {
     for (const slot of slots) {
       const show = Boolean(slot.project) || isMine;
       slot.label.hidden = !show;
-      slot.label.textContent = slot.project ? slot.project.title : '링크 넣기';
+      slot.label.textContent = slot.project ? slot.project.title : '프로젝트 올리기';
       slot.label.dataset.empty = String(!slot.project);
       slot.label.dataset.active = String(selected === slot);
     }
@@ -380,16 +495,29 @@ export function createRoom({ canvas, backend }) {
   function renderCard() {
     if (!selected?.project) return closeCard();
     const list = filled(), { project } = selected;
-    q('[data-count]').textContent = `${list.indexOf(selected) + 1} / ${list.length}`;
-    q('[data-prev]').disabled = q('[data-next]').disabled = list.length < 2;
+
+    q('[data-prev]').hidden = q('[data-next]').hidden = list.length < 2;
     q('[data-avatar]').textContent = (ownerName || '?').trim().charAt(0) || '?';
     q('[data-owner]').textContent = ownerName || '수강생';
     q('[data-title]').textContent = project.title;
     q('[data-host]').textContent = hostOf(project.url);
+    q('[data-description]').textContent = project.description || '등록된 설명이 없어요.';
+    q('[data-instructions]').textContent = project.instructions || '등록된 사용법이 없어요.';
+    const image = q('[data-image]');
+    image.hidden = !project.image_url;
+    image.alt = `${project.title} 대표 이미지`;
+    image.onerror = () => { image.hidden = true; q('[data-no-image]').hidden = false; };
+    if (project.image_url) image.src = project.image_url;
+    else image.removeAttribute('src');
+    q('[data-no-image]').hidden = Boolean(project.image_url);
     q('[data-open]').href = normalizeLink(project.url) || '#';
+    q('[data-edit]').hidden = !isMine;
     q('[data-remove]').hidden = !isMine;
     q('[data-remove]').textContent = removing ? '정말 비울까요? 한 번 더 누르면 지워져요' : '이 상자 비우기';
     q('[data-card-error]').textContent = '';
+    clearTimeout(closeCardTimer);
+    card.classList.remove('is-closing');
+    card.inert = false;
     card.hidden = false;
     setLabels();
   }
@@ -397,11 +525,21 @@ export function createRoom({ canvas, backend }) {
     selected = slot;
     removing = false;
     renderCard();
+    feedback.open(slot.project.id);
   }
   function closeCard() {
+    feedback.close();
     selected = null;
     removing = false;
-    card.hidden = true;
+    clearTimeout(closeCardTimer);
+    if (!card.hidden) {
+      card.classList.add('is-closing');
+      card.inert = true;
+      closeCardTimer = setTimeout(() => {
+        card.hidden = true;
+        card.classList.remove('is-closing');
+      }, reduceMotion.matches ? 0 : 270);
+    }
     setLabels();
   }
   function stepCard(delta) {
@@ -410,14 +548,30 @@ export function createRoom({ canvas, backend }) {
     openCard(list[(list.indexOf(selected) + delta + list.length) % list.length]);
   }
   function openForm(slot) {
+    if (saving || !isMine) return;
     formSlot = slot;
-    linkInput.value = '';
+    form.reset();
+    clearPreview();
+    const project = slot.project;
+    form.querySelector('h2').textContent = project ? '프로젝트 수정하기' : '이 상자에 프로젝트 올리기';
+    submitBtn.textContent = project ? '수정 저장' : '올리기';
+    imageInput.required = !project;
+    form.querySelector('.room-preview-frame > span').textContent = project ? '새 이미지를 선택하면 교체돼요' : '대표 이미지를 선택해 주세요';
+    if (project) {
+      form.elements.title.value = project.title;
+      linkInput.value = project.url;
+      form.elements.description.value = project.description || '';
+      form.elements.instructions.value = project.instructions || '';
+      if (project.image_url) { preview.src = project.image_url; preview.hidden = false; }
+    }
     formError.textContent = '';
-    submitBtn.disabled = false;
+    submitBtn.disabled = saving;
     formVeil.hidden = false;
     linkInput.focus();
   }
   function closeForm() {
+    if (saving && active) return;
+    clearPreview();
     formVeil.hidden = true;
     formSlot = null;
   }
@@ -440,26 +594,42 @@ export function createRoom({ canvas, backend }) {
 
   form.addEventListener('submit', async e => {
     e.preventDefault();
+    if (saving || !active || !isMine || !formSlot) return;
     const link = normalizeLink(linkInput.value);
     if (!link) {
       formError.textContent = '올바른 링크를 넣어 주세요. 예: https://example.com';
       linkInput.focus();
       return;
     }
-    const token = loadToken, slot = formSlot;
+    const title = form.elements.title.value.trim();
+    const description = form.elements.description.value.trim();
+    const instructions = form.elements.instructions.value.trim();
+    const file = imageInput.files[0];
+    if (!title || !description || !instructions || (!file && !formSlot.project)) {
+      formError.textContent = '이름, 설명, 사용법과 대표 이미지를 모두 입력해 주세요.';
+      return;
+    }
+    const token = loadToken, slot = formSlot, targetHome = home;
+    saving = true;
     submitBtn.disabled = true;
     formError.textContent = '';
     try {
-      const project = await backend.addProject(home, { title: hostOf(link).slice(0, 120), url: link });
+      const image = file ? await prepareImage(file) : null;
+      if (token !== loadToken) return;
+      const editing = slot.project;
+      const values = { title, description, instructions, url: link, image };
+      const project = editing ? await backend.updateProject(editing.id, values) : await backend.addProject(targetHome, values);
       if (token !== loadToken) return;
       const list = filled().map(s => s.project);
-      applyProjects([...list, project]);
+      applyProjects(editing ? list.map(item => item.id === project.id ? project : item) : [...list, project]);
+      saving = false;
       closeForm();
       const placed = slots.find(s => s.project?.id === project.id) || slot;
       openCard(placed);
     } catch (error) {
       if (token === loadToken) formError.textContent = failText(error);
     } finally {
+      saving = false;
       submitBtn.disabled = false;
     }
   });
@@ -468,6 +638,7 @@ export function createRoom({ canvas, backend }) {
   q('[data-close]').onclick = closeCard;
   q('[data-prev]').onclick = () => stepCard(-1);
   q('[data-next]').onclick = () => stepCard(1);
+  q('[data-edit]').onclick = () => { if (isMine && selected?.project) openForm(selected); };
   q('[data-remove]').onclick = async () => {
     if (!removing) {
       removing = true;
