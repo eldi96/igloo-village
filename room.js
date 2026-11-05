@@ -8,6 +8,21 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 const STYLE = `
   .room-ui { font: 400 14px/1.55 "Segoe UI", "Malgun Gothic", system-ui, sans-serif; color: #fff3e4; }
   .room-ui[hidden], .room-ui [hidden] { display: none !important; }
+  .room-controls { position: fixed; z-index: 2; left: 24px; bottom: 80px; box-sizing: border-box; width: 224px; padding: 15px 16px; border: 1px solid rgba(194,224,247,.22); border-radius: 16px; background: linear-gradient(135deg,rgba(120,173,211,.18),rgba(15,36,56,.68)); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: inset 0 1px rgba(255,255,255,.16),0 8px 28px rgba(4,17,30,.12); color: #dfedf7; pointer-events: none; }
+  .room-controls[hidden] { display: none; }
+  .room-controls h2 { margin: 0 0 12px; font-size: 12px; font-weight: 600; letter-spacing: .03em; color: #eaf6ff; }
+  .room-control-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; font-size: 11px; line-height: 1.5; }
+  .room-key-grid { display: grid; grid-template-columns: repeat(3,24px); gap: 4px; }
+  .room-key-grid kbd:first-child { grid-column: 2; }
+  .room-key-grid kbd:nth-child(2) { grid-column: 1; }
+  .room-controls kbd { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 24px; height: 24px; padding: 0 5px; border: 1px solid rgba(212,235,251,.35); border-bottom-width: 2px; border-radius: 5px; background: rgba(220,239,255,.08); color: #f0f8ff; font: 600 11px/1 system-ui; }
+  .room-controls kbd.is-held { background: rgba(187,228,255,.38); border-color: #c3e9ff; box-shadow: 0 0 12px rgba(138,208,255,.25); }
+  .room-controls small { font-size: 10px; color: #b3cadc; }
+  .room-controls-divider { height: 1px; margin: 13px 0 3px; background: rgba(202,228,247,.13); }
+  .room-controls-touch { display: none; font-size: 12px; line-height: 1.8; }
+  @media (pointer: coarse) { .room-controls-desktop { display:none; } .room-controls-touch { display:block; } .room-controls { width:auto; max-width:210px; padding:12px 14px; } }
+  @media (max-width: 720px) { .room-controls { left:12px; bottom:88px; } }
+  @media (max-height: 560px) { .room-controls { bottom:66px; padding:10px 12px; } .room-controls h2 { margin-bottom:5px; } .room-control-row { margin-top:6px; } }
   .room-label { position: fixed; z-index: 3; transform: translate(-50%, -100%); padding: 4px 12px; border: 1px solid rgba(255,226,190,.42); border-radius: 13px; background: rgba(38,18,10,.74); color: #fff3e4; font: 500 12px/1.5 "Segoe UI", "Malgun Gothic", system-ui, sans-serif; white-space: nowrap; pointer-events: none; }
   .room-label[data-empty="true"] { background: rgba(255,232,205,.2); color: #fff3e4; }
   .room-label[data-active="true"] { border-color: #ffe9cf; background: #fff0dd; color: #3a1a0a; }
@@ -121,8 +136,13 @@ const WINDOW_PHI = 2.45;
 const ROOM_YAW = 3.5;
 // 왼쪽에서 뒤쪽으로 이어지는 벽을 따라 같은 간격으로 놓는다.
 const BOX_RING = DOME_R - 1.4;
-const BOXES = [-0.95, -0.65, -0.35].map(offset => ({
-  angle: ROOM_YAW + Math.PI + offset, w: 2.1, h: 1.0, d: 1.75
+const BOX_SHAPES = [
+  { w: 1.85, h: 1.05, d: 1.85 },
+  { w: 2.45, h: 0.70, d: 1.60 },
+  { w: 1.65, h: 1.18, d: 1.60 }
+];
+const BOXES = [-0.95, -0.65, -0.35].map((offset, index) => ({
+  angle: ROOM_YAW + Math.PI + offset, ...BOX_SHAPES[index]
 }));
 // 빛이 들어오는 방향. 창에서 방 안쪽으로 향한다.
 const toWindow = new THREE.Vector3(-Math.cos(WINDOW_PHI), 0, Math.sin(WINDOW_PHI));
@@ -149,7 +169,7 @@ function texture(canvas) {
 
 // 창틀 그림자가 진 빛 조각을 칸별로 그린다. place(u, v)는 창 안의 위치를 그림 좌표로 바꾼다.
 function drawWindowLight(g, place, color) {
-  const COLS = 3, ROWS = 4, GAP = 0.06;
+  const COLS = 2, ROWS = 2, GAP = 0.035;
   g.fillStyle = color;
   for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
     const u0 = (c + GAP) / COLS, u1 = (c + 1 - GAP) / COLS, v0 = (r + GAP) / ROWS, v1 = (r + 1 - GAP) / ROWS;
@@ -174,19 +194,19 @@ function makeDomeTexture() {
     for (let i = -1; i < n; i++) {
       const x = (i + (r % 2) * 0.5) / n * W;
       const tone = Math.abs(Math.sin(i * 7.13 + r * 3.71));
-      g.fillStyle = `hsl(${21 + tone * 4}, ${56 + tone * 6}%, ${27 + tone * 5 + (ROWS - r) * -0.8}%)`;
+      g.fillStyle = `hsl(${204 + tone * 7}, ${29 + tone * 5}%, ${45 + tone * 6 + (ROWS - r) * -0.8}%)`;
       g.fillRect(x, y0, W / n + 1, y1 - y0);
-      g.fillStyle = 'rgba(30,11,4,.5)';
+      g.fillStyle = 'rgba(26,54,76,.36)';
       g.fillRect(x - 3, y0, 6, y1 - y0);
     }
-    g.fillStyle = 'rgba(30,11,4,.55)';
+    g.fillStyle = 'rgba(26,54,76,.4)';
     g.fillRect(0, y0 - 3, W, 6);
   }
   // 아래쪽은 바닥에서 튄 빛으로 밝고, 꼭대기는 어둡다.
   const shade = g.createLinearGradient(0, 0, 0, H);
-  shade.addColorStop(0, 'rgba(26,9,3,.62)');
-  shade.addColorStop(0.55, 'rgba(26,9,3,.08)');
-  shade.addColorStop(1, 'rgba(255,170,90,.2)');
+  shade.addColorStop(0, 'rgba(12,31,55,.48)');
+  shade.addColorStop(0.55, 'rgba(24,52,78,.06)');
+  shade.addColorStop(1, 'rgba(172,218,241,.18)');
   g.fillStyle = shade;
   g.fillRect(0, 0, W, H);
   // 창 맞은편 벽에 떨어지는 비스듬한 빛.
@@ -194,7 +214,7 @@ function makeDomeTexture() {
   g.save();
   g.filter = 'blur(10px)';
   g.globalCompositeOperation = 'lighter';
-  drawWindowLight(g, (u, v) => [center - 340 + u * 620 + v * 240, H * 0.4 + v * H * 0.5 + u * 70], 'rgba(255,176,98,.5)');
+  drawWindowLight(g, (u, v) => [center - 340 + u * 620 + v * 240, H * 0.4 + v * H * 0.5 + u * 70], 'rgba(154,208,244,.15)');
   g.restore();
   return texture(canvas);
 }
@@ -203,13 +223,13 @@ function makeFloorTexture() {
   const S = 2048;
   const [canvas, g] = makeCanvas(S, S);
   const toPx = (x, z) => [(x + DOME_R) / (2 * DOME_R) * S, (z + DOME_R) / (2 * DOME_R) * S];
-  g.fillStyle = '#9c5426';
+  g.fillStyle = '#44657e';
   g.fillRect(0, 0, S, S);
   const [cx, cz] = toPx(0, 0);
   const glow = g.createRadialGradient(cx, cz, 0, cx, cz, S * 0.5);
-  glow.addColorStop(0, 'rgba(232,142,76,.7)');
-  glow.addColorStop(0.6, 'rgba(190,100,48,.2)');
-  glow.addColorStop(1, 'rgba(50,20,8,.75)');
+  glow.addColorStop(0, 'rgba(144,190,220,.32)');
+  glow.addColorStop(0.6, 'rgba(106,157,190,.16)');
+  glow.addColorStop(1, 'rgba(16,35,55,.65)');
   g.fillStyle = glow;
   g.fillRect(0, 0, S, S);
   // 창에서 방 안쪽으로 길게 뻗는 빛 조각.
@@ -217,18 +237,18 @@ function makeFloorTexture() {
   const side = new THREE.Vector3(-dir.z, 0, dir.x);
   const start = toWindow.clone().multiplyScalar(8.2);
   g.save();
-  g.filter = 'blur(7px)';
+  g.filter = 'blur(20px)';
   g.globalCompositeOperation = 'lighter';
   drawWindowLight(g, (u, v) => {
     const along = v * 13.5, across = (u - 0.5) * (5 + v * 2.6) + v * 1.6;
     return toPx(start.x + dir.x * along + side.x * across, start.z + dir.z * along + side.z * across);
-  }, 'rgba(255,150,84,.62)');
+  }, 'rgba(179,218,255,.23)');
   g.restore();
   // 상자 그림자는 빛 반대쪽으로 길게 늘인다.
   g.save();
   g.filter = 'blur(13px)';
   g.globalCompositeOperation = 'multiply';
-  g.fillStyle = 'rgb(176,124,98)';
+  g.fillStyle = 'rgb(133,157,180)';
   for (const box of BOXES) {
     const { x, z, yaw } = boxAt(box);
     const hw = box.w / 2, hd = box.d / 2, reach = box.h * 2.1;
@@ -248,7 +268,7 @@ function makeFloorTexture() {
   g.save();
   g.filter = 'blur(6px)';
   g.globalCompositeOperation = 'multiply';
-  g.fillStyle = 'rgb(120,74,50)';
+  g.fillStyle = 'rgb(85,114,140)';
   for (const box of BOXES) {
     const { x, z, yaw } = boxAt(box);
     const hw = box.w / 2 + 0.04, hd = box.d / 2 + 0.04, c = Math.cos(yaw), s = Math.sin(yaw);
@@ -265,21 +285,171 @@ function makeFloorTexture() {
   return texture(canvas);
 }
 
-function makeWindowTexture() {
-  const [canvas, g] = makeCanvas(512, 720);
-  const sky = g.createLinearGradient(0, 0, 0, 720);
-  sky.addColorStop(0, '#fff3dc');
-  sky.addColorStop(1, '#ffc98a');
-  g.fillStyle = sky;
-  g.fillRect(0, 0, 512, 720);
-  g.fillStyle = '#4a2413';
-  g.fillRect(0, 0, 512, 18);
-  g.fillRect(0, 702, 512, 18);
-  g.fillRect(0, 0, 18, 720);
-  g.fillRect(494, 0, 18, 720);
-  for (let i = 1; i < 3; i++) g.fillRect(i * 512 / 3 - 6, 0, 12, 720);
-  for (let i = 1; i < 4; i++) g.fillRect(0, i * 720 / 4 - 6, 512, 12);
-  return texture(canvas);
+// 돔의 창 영역은 면을 만들지 않아 실제로 밖을 볼 수 있다.
+function makeOpenDome() {
+  const phis = [...Array.from({ length: 97 }, (_, i) => i / 96 * Math.PI * 2), WINDOW_PHI - 0.24, WINDOW_PHI + 0.24].sort((a,b) => a-b);
+  const top = Math.PI / 2 - 0.62, bottom = top + 0.5;
+  const thetas = [...Array.from({ length: 33 }, (_, i) => i / 32 * Math.PI / 2), top, bottom].sort((a,b) => a-b);
+  const positions = [], uvs = [], indices = [];
+  for (const theta of thetas) for (const phi of phis) {
+    positions.push(-DOME_R * Math.cos(phi) * Math.sin(theta), DOME_R * Math.cos(theta), DOME_R * Math.sin(phi) * Math.sin(theta));
+    uvs.push(1 - phi / (Math.PI * 2), 1 - theta / Math.PI);
+  }
+  for (let y=0; y<thetas.length-1; y++) for (let x=0; x<phis.length-1; x++) {
+    const phi = (phis[x]+phis[x+1])/2, theta = (thetas[y]+thetas[y+1])/2;
+    if (phi > WINDOW_PHI-0.24 && phi < WINDOW_PHI+0.24 && theta > top && theta < bottom) continue;
+    const a=y*phis.length+x, b=a+phis.length;
+    indices.push(a,b,a+1,a+1,b,b+1);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs,2));
+  geometry.setIndex(indices);
+  return geometry;
+}
+
+function addNightLandscape(scene) {
+  const moonDirection = toWindow.clone().multiplyScalar(150).setY(60).normalize();
+  const hash = n => { const v = Math.sin(n * 127.1 + 19.7) * 43758.5453; return v - Math.floor(v); };
+  // 하늘은 지평선의 푸른 안개와 높은 곳의 짙은 남색을 이어 준다.
+  scene.add(new THREE.Mesh(new THREE.SphereGeometry(300, 48, 24), new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false,
+    uniforms: { moonDir: { value: moonDirection } },
+    vertexShader: 'varying vec3 p; void main(){p=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+    fragmentShader: `varying vec3 p; uniform vec3 moonDir;
+      void main(){vec3 d=normalize(p);float h=clamp(d.y*2.8,0.,1.);
+      vec3 c=mix(vec3(.055,.105,.17),vec3(.003,.009,.026),pow(h,.6));
+      c+=vec3(.08,.12,.17)*pow(max(dot(d,moonDir),0.),36.);
+      gl_FragColor=vec4(c,1.);}`
+  })));
+  const stars = [], sizes = [], brightness = [];
+  for (let i = 0; i < 1700; i++) {
+    const a = i * 2.399963, h = 0.025 + hash(i + 3) * 0.97, r = Math.sqrt(1 - h * h) * 245;
+    stars.push(Math.cos(a) * r, h * 245, Math.sin(a) * r);
+    sizes.push(1.2 + Math.pow(hash(i + 73), 5) * 2.8);
+    brightness.push(0.25 + hash(i + 51) * 0.65);
+  }
+  const starGeo = new THREE.BufferGeometry();
+  starGeo.setAttribute('position', new THREE.Float32BufferAttribute(stars, 3));
+  starGeo.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
+  starGeo.setAttribute('brightness', new THREE.Float32BufferAttribute(brightness, 1));
+  scene.add(new THREE.Points(starGeo, new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false,
+    vertexShader: `attribute float size;attribute float brightness;varying float light;
+      void main(){light=brightness;gl_PointSize=size;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+    fragmentShader: `varying float light;void main(){float r=length(gl_PointCoord-.5)*2.;
+      float a=exp(-r*r*4.)*smoothstep(1.,.6,r);gl_FragColor=vec4(vec3(.78,.88,1.)*light,a);}`
+  })));
+  // 능선과 골짜기를 가진 연속 지형을 여러 거리에 배치한다.
+  const moonColor = new THREE.Color(0xc7ddea), shadowColor = new THREE.Color(0x283e58), mistColor = new THREE.Color(0x526e88);
+  for (let layer = 0; layer < 3; layer++) {
+    const positions = [], indices = [], colors = [], count = 320, rows = 12;
+    for (let row = 0; row <= rows; row++) for (let i = 0; i <= count; i++) {
+      const a = i / count * Math.PI * 2, t = row / rows;
+      const ridge = 8 + Math.pow(Math.abs(Math.sin(a * 5 + layer * 1.3)), 2) * 9
+        + Math.abs(Math.sin(a * 13 + layer)) * 6 + Math.sin(a * 29) * 2.1 + Math.sin(a * 53 + layer) * 1.3;
+      const distance = 62 + layer * 39 + t * 31;
+      const profile = Math.pow(Math.max(0, 1 - Math.abs(t - 0.48) * 2), 1.3);
+      const h = (ridge + Math.sin(a * 37 + t * 9) * profile * 1.2) * profile * (1 - layer * 0.13) - 2;
+      positions.push(Math.cos(a) * distance, h, Math.sin(a) * distance);
+    }
+    for (let row = 0; row < rows; row++) for (let i = 0; i < count; i++) {
+      const a = row * (count + 1) + i, b = a + count + 1;
+      indices.push(a, b, a + 1, a + 1, b, b + 1);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3)); geo.setIndex(indices);geo.computeVertexNormals();
+    const normals = geo.attributes.normal, color = new THREE.Color(), normal = new THREE.Vector3();
+    for (let i = 0; i < positions.length / 3; i++) {
+      normal.fromBufferAttribute(normals, i); if (normal.y < 0) normal.negate();
+      const light = Math.max(0, normal.dot(moonDirection));
+      const snow = THREE.MathUtils.smoothstep(normal.y + positions[i * 3 + 1] * 0.018, 0.32, 0.95);
+      color.copy(shadowColor).lerp(moonColor, snow * (0.16 + light * 0.84));
+      const crevice = Math.pow(Math.abs(Math.sin(positions[i*3] * 0.39 + positions[i*3+2] * 0.22 + positions[i*3+1] * 0.7)), 18);
+      color.multiplyScalar(1 - crevice * 0.17);
+      color.lerp(mistColor, 0.12 + layer * 0.22);
+      colors.push(color.r, color.g, color.b);
+    }
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    scene.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+  }
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(210, 96), new THREE.MeshBasicMaterial({ color: 0x728fa4 }));
+  ground.rotation.x = -Math.PI / 2;ground.position.y = -0.16;scene.add(ground);
+  // 눈 쌓인 가지의 가장자리를 불규칙하게 만들고 같은 형태는 한 번에 그린다.
+  const treePos = [], treeColors = [];
+  const push = (x, y, z, snow, shade) => {
+    treePos.push(x, y, z);
+    const c = new THREE.Color(snow ? 0xb8d1e0 : 0x1b3b49).multiplyScalar(shade);
+    treeColors.push(c.r, c.g, c.b);
+  };
+  for (let tier = 0; tier < 9; tier++) {
+    const y = 0.14 + tier * 0.081, width = (1 - tier / 10) * 0.25;
+    for (let j = 0; j < 12; j++) {
+      const a = j / 12 * Math.PI * 2, b = (j + 1) / 12 * Math.PI * 2;
+      const ra = width * (0.88 + hash(j + tier * 19) * 0.23), rb = width * (0.88 + hash(j + 1 + tier * 19) * 0.23);
+      const ya = y + hash(j + tier * 31) * 0.035, yb = y + hash(j + 1 + tier * 31) * 0.035;
+      const shade = 0.7 + (Math.cos(a - 1) + 1) * 0.15;
+      push(0, y + 0.24, 0, true, 1);push(Math.cos(a)*ra, ya+0.025, Math.sin(a)*ra, true, shade);push(Math.cos(b)*rb, yb+0.025, Math.sin(b)*rb, true, shade);
+      push(0, y + 0.18, 0, false, 1);push(Math.cos(b)*rb*1.08, yb-0.02, Math.sin(b)*rb*1.08, false, shade);push(Math.cos(a)*ra*1.08, ya-0.02, Math.sin(a)*ra*1.08, false, shade);
+    }
+  }
+  const treeGeo = new THREE.BufferGeometry();treeGeo.setAttribute('position', new THREE.Float32BufferAttribute(treePos, 3));treeGeo.setAttribute('color', new THREE.Float32BufferAttribute(treeColors, 3));
+  const treeCount = 72, trees = new THREE.InstancedMesh(treeGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }), treeCount);
+  const dummy = new THREE.Object3D();
+  for (let i = 0; i < treeCount; i++) {
+    const a = i * 2.399963, distance = 29 + hash(i + 9) * 42, height = 3 + hash(i + 110) * 4.5;
+    dummy.position.set(Math.cos(a) * distance, -0.15, Math.sin(a) * distance);dummy.rotation.y = i;
+    dummy.scale.set(height * (0.8 + hash(i) * 0.3), height, height);dummy.updateMatrix();trees.setMatrixAt(i, dummy.matrix);
+  }
+  trees.computeBoundingSphere();scene.add(trees);
+  // 달 표면과 달무리는 별도 텍스처로 만들어 강한 흰 원처럼 보이지 않게 한다.
+  const [moonCanvas, mg] = makeCanvas(256, 256);mg.fillStyle = '#dce7ec';mg.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 95; i++) {
+    const x = hash(i + 100) * 256, y = hash(i + 200) * 256, r = 2 + hash(i + 400) * 16;
+    const crater = mg.createRadialGradient(x, y, 0, x, y, r);crater.addColorStop(0, 'rgba(105,129,150,.25)');crater.addColorStop(1, 'rgba(105,129,150,0)');mg.fillStyle = crater;mg.fillRect(x-r, y-r, r*2, r*2);
+  }
+  const moon = new THREE.Mesh(new THREE.SphereGeometry(3.6, 32, 24), new THREE.MeshBasicMaterial({ map: texture(moonCanvas), toneMapped: false }));
+  moon.position.copy(moonDirection).multiplyScalar(170);scene.add(moon);
+  const [haloCanvas, hg] = makeCanvas(128, 128);const halo = hg.createRadialGradient(64,64,2,64,64,64);
+  halo.addColorStop(0,'rgba(189,219,255,.22)');halo.addColorStop(.25,'rgba(158,199,248,.075)');halo.addColorStop(1,'rgba(158,199,248,0)');hg.fillStyle=halo;hg.fillRect(0,0,128,128);
+  const moonHalo = new THREE.Sprite(new THREE.SpriteMaterial({map:texture(haloCanvas),transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false}));
+  moonHalo.position.copy(moon.position);moonHalo.scale.set(38,38,1);scene.add(moonHalo);
+  const top = Math.PI / 2 - 0.62;
+  // 풍경은 그대로 보이고 비스듬히 볼 때만 반사가 드러나는 맑은 유리.
+  const glass = new THREE.Mesh(new THREE.SphereGeometry(DOME_R - 0.055, 32, 24, WINDOW_PHI - 0.24, 0.48, top, 0.5), new THREE.ShaderMaterial({
+    transparent:true,depthWrite:false,side:THREE.DoubleSide,
+    vertexShader:`varying vec2 v;varying vec3 n;varying vec3 eye;void main(){v=uv;vec4 w=modelMatrix*vec4(position,1.);n=normalize(mat3(modelMatrix)*normal);eye=cameraPosition-w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}`,
+    fragmentShader:`varying vec2 v;varying vec3 n;varying vec3 eye;
+      float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+      void main(){float edge=min(min(v.x,1.-v.x),min(v.y,1.-v.y));
+      float grain=hash(floor(v*vec2(480.,600.)));float frost=pow(1.-smoothstep(0.,.075,edge),2.)*(.08+grain*.10);
+      float fresnel=pow(1.-abs(dot(normalize(n),normalize(eye))),3.);
+      float sheen=pow(max(0.,1.-abs(v.x*.8+v.y*.35-.85)*6.),10.)*.025;
+      gl_FragColor=vec4(mix(vec3(.44,.68,.85),vec3(.8,.94,1.),frost*2.),.012+fresnel*.15+frost+sheen);}`
+  }));
+  scene.add(glass);
+  const frameMat = new THREE.MeshStandardMaterial({color:0x91acbe,roughness:0.32,metalness:0.18,side:THREE.DoubleSide});
+  for(const [p,w,t,h] of [[WINDOW_PHI-0.252,0.012,top-0.012,0.524],[WINDOW_PHI+0.24,0.012,top-0.012,0.524],[WINDOW_PHI-0.252,0.504,top-0.012,0.012],[WINDOW_PHI-0.252,0.504,top+0.5,0.012]]) {
+    scene.add(new THREE.Mesh(new THREE.SphereGeometry(DOME_R-0.025,32,16,p,w,t,h),frameMat));
+  }
+  // 창살과 창짝 테두리는 유리보다 안쪽으로 돌출시켜 두께가 보이게 한다.
+  const railMat = new THREE.MeshStandardMaterial({ color: 0x9fb9cc, roughness: 0.38, metalness: 0.25 });
+  const point = (phi, theta, radius = DOME_R - 0.15) => new THREE.Vector3(
+    -radius * Math.cos(phi) * Math.sin(theta), radius * Math.cos(theta), radius * Math.sin(phi) * Math.sin(theta));
+  const rail = (p0, t0, p1, t1, thickness) => {
+    const points = Array.from({ length: 21 }, (_, i) => point(THREE.MathUtils.lerp(p0, p1, i / 20), THREE.MathUtils.lerp(t0, t1, i / 20)));
+    scene.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 24, thickness, 8, false), railMat));
+  };
+  const left = WINDOW_PHI - 0.24, right = WINDOW_PHI + 0.24, bottom = top + 0.5;
+  rail(left, top, left, bottom, 0.075);
+  rail(right, top, right, bottom, 0.075);
+  rail(left, top, right, top, 0.075);
+  rail(left, bottom, right, bottom, 0.075);
+  // 가운데 맞댐선은 두 창짝이 만나는 부분이며 가로 창살은 한 줄만 둔다.
+  rail(WINDOW_PHI - 0.004, top, WINDOW_PHI - 0.004, bottom, 0.043);
+  rail(WINDOW_PHI + 0.004, top, WINDOW_PHI + 0.004, bottom, 0.043);
+  rail(left, top + 0.25, right, top + 0.25, 0.045);
+
 }
 
 // 프로젝트 링크로 쓸 수 있는 주소로 정리한다. 형식이 틀리면 null이다.
@@ -309,56 +479,174 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
   document.head.appendChild(style);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x1c0b04);
-  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 60);
+  scene.background = new THREE.Color(0x152c43);
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 500);
 
   // 방: 돔과 바닥은 그림을 그대로 보여준다.
   const dome = new THREE.Mesh(
-    new THREE.SphereGeometry(DOME_R, 64, 24, 0, Math.PI * 2, 0, Math.PI / 2),
+    makeOpenDome(),
     new THREE.MeshBasicMaterial({ map: makeDomeTexture(), side: THREE.BackSide })
   );
   scene.add(dome);
   const floor = new THREE.Mesh(new THREE.CircleGeometry(DOME_R, 64), new THREE.MeshBasicMaterial({ map: makeFloorTexture() }));
   floor.rotation.x = -Math.PI / 2;
   scene.add(floor);
-  const windowPane = new THREE.Mesh(
-    new THREE.SphereGeometry(DOME_R - 0.04, 12, 12, WINDOW_PHI - 0.24, 0.48, Math.PI / 2 - 0.62, 0.5),
-    new THREE.MeshBasicMaterial({ map: makeWindowTexture(), side: THREE.BackSide, color: new THREE.Color(1.5, 1.42, 1.3) })
-  );
-  scene.add(windowPane);
+  addNightLandscape(scene);
 
-  scene.add(new THREE.HemisphereLight(0xffcfa0, 0x9a4f22, 1.5));
-  const sun = new THREE.DirectionalLight(0xffc48a, 2.3);
-  sun.position.copy(toWindow).multiplyScalar(10).setY(6);
+  scene.add(new THREE.HemisphereLight(0xd5edff, 0x3a5870, 1.5));
+  const sun = new THREE.DirectionalLight(0xb9dcff, 1.8);
+  sun.position.copy(toWindow).multiplyScalar(10).setY(60 / 15);
   scene.add(sun);
 
-  // 상자와 그 위에 생기는 오브젝트.
-  const boxGeo = new RoundedBoxGeometry(1, 1, 1, 3, 0.035);
-  const gemGeo = new THREE.OctahedronGeometry(0.34, 0);
-  const hitGeo = new THREE.SphereGeometry(0.62, 10, 8);
+  // 비어 있을 때는 안쪽이 보이고, 프로젝트가 있으면 리본으로 포장한다.
+  const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+  // 얇은 종이 섬유와 작은 명도 차이만 넣어 무광 포장지 질감을 만든다.
+  const [paperCanvas, paperContext] = makeCanvas(256, 256);
+  const paperImage = paperContext.createImageData(256, 256);
+  let paperSeed = 43;
+  const paperRandom = () => { paperSeed = (Math.imul(paperSeed, 1664525) + 1013904223) >>> 0; return paperSeed / 4294967296; };
+  for (let i = 0; i < paperImage.data.length; i += 4) {
+    const v = 238 + paperRandom() * 17;
+    paperImage.data[i] = paperImage.data[i+1] = paperImage.data[i+2] = v;paperImage.data[i+3] = 255;
+  }
+  paperContext.putImageData(paperImage, 0, 0);
+  paperContext.strokeStyle = 'rgba(125,125,125,.075)';paperContext.lineWidth = 0.5;
+  for (let i=0;i<600;i++) {
+    const x=paperRandom()*256,y=paperRandom()*256;
+    paperContext.beginPath();paperContext.moveTo(x,y);paperContext.lineTo(x+1+paperRandom()*5,y+paperRandom()*2);paperContext.stroke();
+  }
+  const paperMap = texture(paperCanvas);paperMap.wrapS = paperMap.wrapT = THREE.RepeatWrapping;paperMap.repeat.set(2,2);
+  const paperBump = paperMap.clone();paperBump.colorSpace = THREE.NoColorSpace;
   const hitMat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+  const paperColors = [0xb52f45, 0x207452, 0xd0a23b, 0x325d96, 0x8f3d58];
+  const ribbonColors = [0x2f9b65, 0xddb85c, 0xe8dfbd, 0xb82f43];
+  const colorOffset = Math.floor(Math.random() * paperColors.length);
+  const [treasureCanvas, treasureContext] = makeCanvas(128, 128);
+  const treasureGradient = treasureContext.createRadialGradient(64,64,0,64,64,64);
+  treasureGradient.addColorStop(0,'rgba(255,249,205,1)');
+  treasureGradient.addColorStop(0.2,'rgba(255,222,119,.72)');
+  treasureGradient.addColorStop(0.55,'rgba(255,182,56,.18)');
+  treasureGradient.addColorStop(1,'rgba(255,161,32,0)');
+  treasureContext.fillStyle=treasureGradient;treasureContext.fillRect(0,0,128,128);
+  const treasureTexture=texture(treasureCanvas);
+  const treasureLight=new THREE.PointLight(0xffd47b,0,5,2);scene.add(treasureLight);
   const slots = BOXES.map((box, index) => {
     const { x, z, yaw } = boxAt(box);
-    const mesh = new THREE.Mesh(boxGeo, new THREE.MeshStandardMaterial({ color: 0xf0b483, roughness: 0.82, emissive: 0xff8a3a, emissiveIntensity: 0 }));
-    mesh.scale.set(box.w, box.h, box.d);
-    mesh.position.set(x, box.h / 2, z);
-    mesh.rotation.y = yaw;
-    mesh.userData.slot = index;
-    scene.add(mesh);
-    const gem = new THREE.Mesh(gemGeo, new THREE.MeshStandardMaterial({ color: 0xffd9a8, roughness: 0.3, metalness: 0.1, emissive: 0xff9a4a, emissiveIntensity: 0.8, flatShading: true }));
-    gem.position.set(x, box.h + 0.62, z);
-    gem.visible = false;
-    scene.add(gem);
-    const hit = new THREE.Mesh(hitGeo, hitMat);
-    hit.position.copy(gem.position);
-    hit.userData.slot = index;
-    hit.userData.gem = true;
-    hit.visible = false;
-    scene.add(hit);
-    const label = document.createElement('div');
-    label.className = 'room-label';
-    label.hidden = true;
-    return { index, box, mesh, gem, hit, label, project: null, anchor: new THREE.Vector3(x, box.h, z), phase: index * 2.1, glow: 0, pop: 0 };
+    const root = new THREE.Group();root.name = `gift-box-${index}`;root.position.set(x, 0, z);root.rotation.y = yaw;scene.add(root);
+    const paper = paperColors[(colorOffset + index) % paperColors.length];
+    const ribbons = ribbonColors.filter(color => !(paper === 0x207452 && color === 0x2f9b65) && !(paper === 0xb52f45 && color === 0xb82f43));
+    const ribbonColor = ribbons[Math.floor(Math.random() * ribbons.length)];
+    const bodyMaterial = new THREE.MeshStandardMaterial({color:paper,roughness:0.98,metalness:0,map:paperMap,bumpMap:paperBump,bumpScale:0.008,emissive:paper,emissiveIntensity:0});
+    const ribbonMaterial = new THREE.MeshStandardMaterial({color:ribbonColor,roughness:0.65,metalness:0.04,side:THREE.DoubleSide});
+    const part = (parent, material, sx, sy, sz, px, py, pz) => {
+      const mesh = new THREE.Mesh(boxGeo, material);mesh.scale.set(sx,sy,sz);mesh.position.set(px,py,pz);parent.add(mesh);return mesh;
+    };
+    const thickness = 0.026;
+    part(root,bodyMaterial,box.w,0.04,box.d,0,0.02,0);
+    for (const side of [-1,1]) {
+      part(root,bodyMaterial,box.w,box.h,thickness,0,box.h/2,side*(box.d/2-thickness/2));
+      part(root,bodyMaterial,thickness,box.h,box.d-thickness*2,side*(box.w/2-thickness/2),box.h/2,0);
+    }
+    // 옆면에는 포장지를 접어 겹친 선만 가늘게 남긴다.
+    const foldPoints = [];
+    for (const side of [-1,1]) {
+      const x=side*(box.w/2+0.002);
+      foldPoints.push(x,box.h, -box.d/2+0.03, x,box.h*0.42,0,
+        x,box.h,box.d/2-0.03, x,box.h*0.42,0,
+        x,box.h*0.42,0, x,0.04,0);
+    }
+    const foldGeometry = new THREE.BufferGeometry();foldGeometry.setAttribute('position',new THREE.Float32BufferAttribute(foldPoints,3));
+    root.add(new THREE.LineSegments(foldGeometry,new THREE.LineBasicMaterial({color:new THREE.Color(paper).multiplyScalar(0.55),transparent:true,opacity:0.25})));
+    const lid = new THREE.Group();lid.name = 'gift-lid';lid.position.set(0,box.h,-box.d/2);root.add(lid);
+    part(lid,bodyMaterial,box.w+0.075,0.028,box.d+0.075,0,0.027,box.d/2);
+    for (const side of [-1,1]) {
+      part(lid,bodyMaterial,box.w+0.075,0.095,thickness,0,-0.023,box.d/2+side*(box.d/2+0.024));
+      part(lid,bodyMaterial,thickness,0.095,box.d+0.025,side*(box.w/2+0.024),-0.023,box.d/2);
+    }
+    const lidRibbon = new THREE.Group();lidRibbon.position.set(0,0.055,box.d/2);lid.add(lidRibbon);
+    part(lidRibbon,ribbonMaterial,0.19,0.008,box.d+0.08,0,0,0);
+    part(lidRibbon,ribbonMaterial,box.w+0.08,0.008,0.19,0,0.008,0);
+    // 평평한 리본을 곡면으로 구부려 나비 매듭을 만든다.
+    for (const sign of [-1,1]) {
+      const points = [new THREE.Vector3(0,0.035,0),new THREE.Vector3(sign*0.29,0.31,-0.03),new THREE.Vector3(sign*0.52,0.20,0.02),new THREE.Vector3(sign*0.29,0.045,0.12),new THREE.Vector3(0,0.035,0)];
+      const curve = new THREE.CatmullRomCurve3(points), positions=[], indices=[];
+      for (let i=0;i<=32;i++) {
+        const p=curve.getPoint(i/32);positions.push(p.x,p.y,p.z-0.065,p.x,p.y,p.z+0.065);
+        if(i<32) {const a=i*2;indices.push(a,a+1,a+2,a+1,a+3,a+2);}
+      }
+      const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.setIndex(indices);geometry.computeVertexNormals();
+      lidRibbon.add(new THREE.Mesh(geometry,ribbonMaterial));
+      const tail=part(lidRibbon,ribbonMaterial,0.13,0.008,0.40,sign*0.13,0.023,0.22);tail.rotation.y=sign*0.35;
+    }
+    part(lidRibbon,ribbonMaterial,0.15,0.075,0.14,0,0.07,0);
+    const bodyRibbon = new THREE.Group();bodyRibbon.position.y=box.h/2;root.add(bodyRibbon);
+    for (const side of [-1,1]) {
+      part(bodyRibbon,ribbonMaterial,0.19,box.h,0.008,0,0,side*(box.d/2+0.012));
+      part(bodyRibbon,ribbonMaterial,0.008,box.h,0.19,side*(box.w/2+0.012),0,0);
+    }
+    // 뚜껑이 열리면 안쪽의 보물 빛과 별 입자가 나타난다.
+    const treasure = new THREE.Group();root.add(treasure);treasure.visible=false;
+    // 상자 입구를 불투명한 빛으로 채워 빈 바닥이 보이지 않게 한다.
+    const treasureFillMaterial = new THREE.ShaderMaterial({
+      transparent:true,depthWrite:false,side:THREE.DoubleSide,
+      uniforms:{time:{value:0},strength:{value:0}},
+      vertexShader:'varying vec2 v;void main(){v=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+      fragmentShader:`varying vec2 v;uniform float time;uniform float strength;
+        float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+        void main(){vec2 grid=v*vec2(17.,14.);vec2 cell=floor(grid);float seed=hash(cell);
+        vec2 p=(fract(grid)-.5)*2.;float pulse=pow(.5+.5*sin(time*(3.+seed*4.)+seed*80.),5.);
+        float star=pow(max(0.,1.-min(abs(p.x),abs(p.y))*5.),3.)*pow(max(0.,1.-max(abs(p.x),abs(p.y))),2.);
+        float mist=.5+.5*sin(v.x*15.+time*.7)*sin(v.y*13.-time*.5);
+        vec3 gold=mix(vec3(1.,.64,.17),vec3(1.,.94,.64),.55+mist*.3);
+        gl_FragColor=vec4(gold+vec3(1.,.95,.75)*star*pulse*1.2,strength);}`
+    });
+    const treasureFill = new THREE.Mesh(new THREE.PlaneGeometry(box.w-0.06,box.d-0.06),treasureFillMaterial);
+    treasureFill.rotation.x=-Math.PI/2;treasureFill.position.y=box.h-0.035;treasure.add(treasureFill);
+    const glowMaterial=new THREE.SpriteMaterial({map:treasureTexture,color:0xffe3a1,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false});
+    const glow=new THREE.Sprite(glowMaterial);glow.position.set(0,box.h*0.6,0);glow.scale.set(box.w*1.65,box.w*1.65,1);treasure.add(glow);
+    const poolMaterial=new THREE.MeshBasicMaterial({map:treasureTexture,color:0xffca69,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false});
+    const pool=new THREE.Mesh(new THREE.PlaneGeometry(box.w*2.5,box.d*2.5),poolMaterial);pool.rotation.x=-Math.PI/2;pool.position.y=0.045;treasure.add(pool);
+    const beamMaterial=new THREE.ShaderMaterial({
+      transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
+      uniforms:{strength:{value:0}},
+      vertexShader:'varying vec2 v;void main(){v=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+      fragmentShader:`varying vec2 v;uniform float strength;void main(){float side=pow(max(0.,1.-abs(v.x-.5)*2.),2.);
+      float a=side*pow(1.-v.y,2.)*smoothstep(0.,.12,v.y)*strength;
+      gl_FragColor=vec4(vec3(1.,.72,.25)*1.5,a*.32);}`
+    });
+    for (let i=0;i<4;i++) {
+      const beam=new THREE.Mesh(new THREE.PlaneGeometry(box.w*0.9,2.6),beamMaterial);
+      beam.position.y=box.h+1.05;beam.rotation.y=i*Math.PI/4;treasure.add(beam);
+    }
+    const sparklePositions=[],sparklePhases=[];
+    for (let i=0;i<360;i++) {
+      const a=i*2.399963, r=Math.sqrt((i*.618033%1))*.52;
+      sparklePositions.push(Math.cos(a)*r*box.w,0,Math.sin(a)*r*box.d);
+      sparklePhases.push((i*.381966%1),0.7+(i*.173%1),i%7===0?1:0);
+    }
+    const sparkleGeometry=new THREE.BufferGeometry();sparkleGeometry.setAttribute('position',new THREE.Float32BufferAttribute(sparklePositions,3));sparkleGeometry.setAttribute('phase',new THREE.Float32BufferAttribute(sparklePhases,3));
+    const sparkleMaterial=new THREE.ShaderMaterial({
+      transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+      uniforms:{time:{value:0},strength:{value:0},base:{value:box.h+0.02}},
+      vertexShader:`attribute vec3 phase;uniform float time;uniform float strength;uniform float base;varying float light;varying float star;
+      void main(){float life=fract(phase.x+time*(.12+phase.y*.09));vec3 p=position;
+      p.y=base+life*2.8;p.x+=sin(time*1.3+phase.x*31.)*.12*life;p.z+=cos(time+phase.x*23.)*.12*life;
+      float twinkle=pow(.5+.5*sin(time*(4.+phase.y*3.)+phase.x*100.),3.);
+      light=strength*sin(life*3.14159)*(.16+twinkle*.84);star=phase.z;
+      vec4 mv=modelViewMatrix*vec4(p,1.);gl_PointSize=clamp((star>0.5?100.:48.)/max(1.,-mv.z),1.,22.);gl_Position=projectionMatrix*mv;}`,
+      fragmentShader:`varying float light;varying float star;void main(){vec2 p=abs(gl_PointCoord-.5)*2.;
+      float core=exp(-dot(p,p)*9.);float rays=pow(max(0.,1.-min(p.x,p.y)*6.),3.)*pow(max(0.,1.-max(p.x,p.y)),2.);
+      float a=core+rays*star*.8;gl_FragColor=vec4(mix(vec3(1.,.64,.18),vec3(1.,.98,.76),core),a*light);}`
+    });
+    treasure.add(new THREE.Points(sparkleGeometry,sparkleMaterial));
+    const mesh=new THREE.Mesh(new THREE.BoxGeometry(box.w,box.h,box.d),hitMat);
+    mesh.position.set(x,box.h/2,z);mesh.rotation.y=yaw;mesh.userData.slot=index;scene.add(mesh);
+    const hit=new THREE.Mesh(new THREE.BoxGeometry(box.w+0.15,0.7,box.d+0.15),hitMat);
+    hit.position.set(x,box.h+0.35,z);hit.rotation.y=yaw;hit.userData.slot=index;scene.add(hit);
+    const label=document.createElement('div');label.className='room-label';label.hidden=true;
+    lid.rotation.x=-1.42;lidRibbon.visible=bodyRibbon.visible=false;
+    return {index,box,mesh,hit,root,lid,lidRibbon,bodyRibbon,bodyMaterial,treasure,treasureFillMaterial,glowMaterial,poolMaterial,beamMaterial,sparkleMaterial,label,project:null,
+      anchor:new THREE.Vector3(x,box.h+0.45,z),glow:0,wrap:0,pop:0};
   });
 
   // 공중에 떠다니는 먼지. 빛이 있는 공간처럼 보이게 한다.
@@ -370,7 +658,7 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    return new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffd7a8, size: 0.03, transparent: true, opacity: 0.32, depthWrite: false }));
+    return new THREE.Points(g, new THREE.PointsMaterial({ color: 0xd5eeff, size: 0.03, transparent: true, opacity: 0.32, depthWrite: false }));
   })();
   scene.add(dust);
 
@@ -379,10 +667,17 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
   labels.className = 'room-ui';
   labels.hidden = true;
   slots.forEach(slot => labels.appendChild(slot.label));
+  const controls = document.createElement('section');
+  controls.className = 'room-ui room-controls';controls.hidden = true;controls.setAttribute('aria-label', '이글루 안 조작 안내');
+  controls.innerHTML = `<h2>이글루 안 둘러보기</h2><div class="room-controls-desktop"><div class="room-control-row"><span class="room-key-grid"><kbd data-key="KeyW">W</kbd><kbd data-key="KeyA">A</kbd><kbd data-key="KeyS">S</kbd><kbd data-key="KeyD">D</kbd></span><span>앞뒤 · 좌우 이동</span></div><div class="room-control-row"><span><kbd data-key="KeyQ">Q</kbd> <small>위</small> <kbd data-key="KeyE">E</kbd> <small>아래</small></span><span>높이 조절</span></div><div class="room-controls-divider"></div><div class="room-control-row"><kbd data-mouse="2">오른쪽 누른 채 이동</kbd><span>시선 회전</span></div><div class="room-control-row"><kbd data-mouse="0">왼쪽 클릭</kbd><span>선물상자 열기</span></div></div><div class="room-controls-touch">한 손가락 드래그 · 둘러보기<br>두 손가락 벌리기 · 이동<br>선물상자 터치 · 열기</div>`;
+  document.body.append(controls);
+  const controlKeys = [...controls.querySelectorAll('[data-key]')];
+  const controlMouse = [...controls.querySelectorAll('[data-mouse]')];
+  const paintControlKeys = () => controlKeys.forEach(key => key.classList.toggle('is-held', keys.has(key.dataset.key)));
   const formVeil = document.createElement('div');
   formVeil.className = 'room-ui room-veil';
   formVeil.hidden = true;
-  formVeil.innerHTML = `<form class="room-form" role="dialog" aria-modal="true" aria-labelledby="room-form-title"><h2 id="room-form-title">이 상자에 프로젝트 올리기</h2><p>직접 작성한 소개와 이미지가 프로젝트 카드에 표시돼요.</p><div class="room-form-layout"><div class="room-form-fields"><label>프로젝트 이름<input name="title" required maxlength="120" placeholder="프로젝트 이름"></label><label>프로젝트 링크<input name="link" type="text" inputmode="url" required autocomplete="off" spellcheck="false" placeholder="https://" maxlength="2048"></label><label>프로젝트 설명<textarea name="description" required maxlength="5000" placeholder="어떤 서비스인지 소개해 주세요."></textarea></label><label>사용법<textarea name="instructions" required maxlength="5000" placeholder="시작 방법과 주요 기능을 순서대로 적어 주세요."></textarea></label></div><section class="room-form-image"><label>대표 이미지<input name="image" type="file" accept="image/png,image/jpeg,image/webp" required></label><p>이미지 1장 · PNG·JPG·WebP, 최대 5MB</p><div class="room-preview-frame"><span>대표 이미지를 선택해 주세요</span><img class="room-preview" alt="선택한 대표 이미지 미리보기" hidden></div></section></div><p class="room-error" role="alert"></p><div class="room-actions"><button type="submit" class="room-btn primary">올리기</button><button type="button" class="room-btn" data-cancel>취소</button></div></form>`;
+  formVeil.innerHTML = `<form class="room-form" role="dialog" aria-modal="true" aria-labelledby="room-form-title"><h2 id="room-form-title">이 상자에 프로젝트 넣기</h2><p>직접 작성한 소개와 이미지가 프로젝트 카드에 표시돼요.</p><div class="room-form-layout"><div class="room-form-fields"><label>프로젝트 이름<input name="title" required maxlength="120" placeholder="프로젝트 이름"></label><label>프로젝트 링크<input name="link" type="text" inputmode="url" required autocomplete="off" spellcheck="false" placeholder="https://" maxlength="2048"></label><label>프로젝트 설명<textarea name="description" required maxlength="5000" placeholder="어떤 서비스인지 소개해 주세요."></textarea></label><label>사용법<textarea name="instructions" required maxlength="5000" placeholder="시작 방법과 주요 기능을 순서대로 적어 주세요."></textarea></label></div><section class="room-form-image"><label>대표 이미지<input name="image" type="file" accept="image/png,image/jpeg,image/webp" required></label><p>이미지 1장 · PNG·JPG·WebP, 최대 5MB</p><div class="room-preview-frame"><span>대표 이미지를 선택해 주세요</span><img class="room-preview" alt="선택한 대표 이미지 미리보기" hidden></div></section></div><p class="room-error" role="alert"></p><div class="room-actions"><button type="submit" class="room-btn primary">넣기</button><button type="button" class="room-btn" data-cancel>취소</button></div></form>`;
   const card = document.createElement('aside');
   card.className = 'room-ui room-card';
   card.hidden = true;
@@ -461,20 +756,44 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
   const formError = form.querySelector('.room-error');
   const submitBtn = form.querySelector('[type=submit]');
 
-  // 시점: 방 가운데를 중심으로 어느 방향으로든 돌 수 있다. 위아래와 거리는 벽을 벗어나지 않게 제한한다.
+  // 방 안에서 자유롭게 이동하되 바닥과 얼음 돔 밖으로 나가지 않는다.
   const START = { yaw: ROOM_YAW, pitch: 0.26, radius: 9 };
-  const view = { ...START, targetYaw: START.yaw, targetPitch: START.pitch, targetRadius: START.radius };
-  const LIMIT = { pitchMin: 0.12, pitchMax: 0.72, radiusMin: 5, radiusMax: 9.8 };
-  const clampView = () => {
-    view.targetPitch = THREE.MathUtils.clamp(view.targetPitch, LIMIT.pitchMin, LIMIT.pitchMax);
-    view.targetRadius = THREE.MathUtils.clamp(view.targetRadius, LIMIT.radiusMin, LIMIT.radiusMax);
+  const view = { yaw: 0, pitch: 0, targetYaw: 0, targetPitch: 0 };
+  const position = new THREE.Vector3();
+  const forward = new THREE.Vector3(), right = new THREE.Vector3(), movement = new THREE.Vector3();
+  const rotation = new THREE.Euler(0, 0, 0, 'YXZ');
+  const keys = new Set();
+  const typing = () => document.activeElement?.matches('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
+  const clampView = () => { view.targetPitch = THREE.MathUtils.clamp(view.targetPitch, -Math.PI / 2 + 0.05, Math.PI / 2 - 0.05); };
+  const resetView = () => {
+    position.set(Math.cos(START.yaw) * Math.cos(START.pitch) * START.radius,
+      1.15 + Math.sin(START.pitch) * START.radius, Math.sin(START.yaw) * Math.cos(START.pitch) * START.radius);
+    camera.position.copy(position);
+    camera.lookAt(0, 1.15, 0);
+    rotation.setFromQuaternion(camera.quaternion, 'YXZ');
+    Object.assign(view, { yaw: rotation.y, targetYaw: rotation.y, pitch: rotation.x, targetPitch: rotation.x });
   };
-  const focus = new THREE.Vector3(0, 1.15, 0);
   const placeCamera = () => {
-    const cp = Math.cos(view.pitch);
-    camera.position.set(Math.cos(view.yaw) * cp * view.radius, focus.y + Math.sin(view.pitch) * view.radius, Math.sin(view.yaw) * cp * view.radius);
-    camera.lookAt(focus);
+    camera.position.copy(position);
+    camera.quaternion.setFromEuler(rotation.set(view.pitch, view.yaw, 0, 'YXZ'));
   };
+  const moveCamera = (dx, dy, dz) => {
+    const next = position.clone().add(new THREE.Vector3(dx, dy, dz));
+    next.y = THREE.MathUtils.clamp(next.y, 0.65, DOME_R - 0.5);
+    const maxR = Math.sqrt(Math.max(0, (DOME_R - 0.4) ** 2 - next.y ** 2));
+    const radius = Math.hypot(next.x, next.z);
+    if (radius > maxR) { next.x *= maxR / radius; next.z *= maxR / radius; }
+    // 카메라가 상자 속으로 들어가지 않도록 몸통 높이에서 충돌을 막는다.
+    for (const box of BOXES) {
+      if (next.y > box.h + 0.3) continue;
+      const at = boxAt(box), x = next.x - at.x, z = next.z - at.z;
+      const localX = Math.cos(at.yaw) * x - Math.sin(at.yaw) * z;
+      const localZ = Math.sin(at.yaw) * x + Math.cos(at.yaw) * z;
+      if (Math.abs(localX) < box.w / 2 + 0.25 && Math.abs(localZ) < box.d / 2 + 0.25) return;
+    }
+    position.copy(next);
+  };
+  resetView();
   placeCamera();
 
   let active = false, home = null, isMine = false, ownerName = '', selected = null, formSlot = null, loadToken = 0, removing = false, lastTime = null;
@@ -499,7 +818,7 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
     for (const slot of slots) {
       const show = Boolean(slot.project) || isMine;
       slot.label.hidden = !show;
-      slot.label.textContent = slot.project ? slot.project.title : '프로젝트 올리기';
+      slot.label.textContent = slot.project ? slot.project.title : '프로젝트 넣기';
       slot.label.dataset.empty = String(!slot.project);
       slot.label.dataset.active = String(selected === slot);
     }
@@ -509,7 +828,7 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
     const list = rows.slice().sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(0, slots.length);
     slots.forEach((slot, i) => {
       slot.project = list[i] || null;
-      slot.gem.visible = slot.hit.visible = Boolean(slot.project);
+      slot.hit.visible = Boolean(slot.project);
       if (slot.project) slot.pop = 1;
     });
     setLabels();
@@ -575,8 +894,8 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
     form.reset();
     clearPreview();
     const project = slot.project;
-    form.querySelector('h2').textContent = project ? '프로젝트 수정하기' : '이 상자에 프로젝트 올리기';
-    submitBtn.textContent = project ? '수정 저장' : '올리기';
+    form.querySelector('h2').textContent = project ? '프로젝트 수정하기' : '이 상자에 프로젝트 넣기';
+    submitBtn.textContent = project ? '수정 저장' : '넣기';
     imageInput.required = !project;
     form.querySelector('.room-preview-frame > span').textContent = project ? '새 이미지를 선택하면 교체돼요' : '대표 이미지를 선택해 주세요';
     if (project) {
@@ -647,7 +966,8 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
       saving = false;
       closeForm();
       const placed = slots.find(s => s.project?.id === project.id) || slot;
-      openCard(placed);
+      if (editing) openCard(placed);
+      else closeCard();
     } catch (error) {
       if (token === loadToken) formError.textContent = failText(error);
     } finally {
@@ -689,10 +1009,23 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
     else if (!card.hidden) closeCard();
   };
   addEventListener('keydown', onKey);
+  addEventListener('keydown', e => {
+    if (!active || typing() || !formVeil.hidden || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (!['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE'].includes(e.code)) return;
+    e.preventDefault(); keys.add(e.code);paintControlKeys();
+  });
+  addEventListener('keyup', e => { keys.delete(e.code);paintControlKeys(); });
+  const clearInput = () => { keys.clear();paintControlKeys();controlMouse.forEach(key => key.classList.remove('is-held'));pointers.clear(); pinch = 0; dragged = false; };
+  addEventListener('blur', clearInput);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) clearInput(); });
+  document.addEventListener('focusin', () => { if (typing()) { keys.clear();paintControlKeys(); } });
+  canvas.addEventListener('contextmenu', e => { if (active) e.preventDefault(); });
 
   canvas.addEventListener('pointerdown', e => {
-    if (!active) return;
-    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY });
+    if (!active || (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 2)) return;
+    if (e.button === 2) e.preventDefault();
+    controlMouse.forEach(key => key.classList.toggle('is-held', Number(key.dataset.mouse) === e.button));
+    pointers.set(e.pointerId, { button: e.button, touch: e.pointerType !== 'mouse', x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY });
     if (pointers.size === 1) dragged = false;
     pinch = 0;
   });
@@ -712,7 +1045,7 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
     if (pointers.size === 2) {
       const [a, b] = [...pointers.values()];
       const distance = Math.hypot(a.x - b.x, a.y - b.y);
-      if (pinch) view.targetRadius *= pinch / distance;
+      if (pinch) { forward.set(0, 0, -1).applyQuaternion(camera.quaternion); moveCamera(forward.x * (distance - pinch) * 0.015, 0, forward.z * (distance - pinch) * 0.015); }
       pinch = distance;
       dragged = true;
       clampView();
@@ -720,18 +1053,21 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
     }
     if (!dragged && Math.hypot(e.clientX - held.startX, e.clientY - held.startY) < 6) return;
     dragged = true;
+    if (!held.touch && held.button !== 2) return;
     canvas.style.cursor = 'grabbing';
-    view.targetYaw += dx * 0.0052;
-    view.targetPitch += dy * 0.0032;
+    view.targetYaw -= dx * 0.0052;
+    view.targetPitch -= dy * 0.0032;
     clampView();
   });
   const endPointer = e => {
     if (!pointers.has(e.pointerId)) return;
+    const held = pointers.get(e.pointerId);
+    controlMouse.forEach(key => key.classList.remove('is-held'));
     pointers.delete(e.pointerId);
     pinch = 0;
     if (!active || pointers.size) return;
     canvas.style.cursor = 'grab';
-    if (dragged || e.type !== 'pointerup') return;
+    if (dragged || e.type !== 'pointerup' || (!held.touch && held.button !== 0)) return;
     const slot = pick(e.clientX, e.clientY);
     if (!clickable(slot)) return;
     if (slot.project) openCard(slot);
@@ -742,8 +1078,9 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
   canvas.addEventListener('wheel', e => {
     if (!active) return;
     e.preventDefault();
-    view.targetRadius *= Math.exp(e.deltaY * 0.001);
-    clampView();
+    forward.set(0, 0, -1).applyQuaternion(camera.quaternion);
+    const step = THREE.MathUtils.clamp(-e.deltaY * 0.004, -0.6, 0.6);
+    moveCamera(forward.x * step, 0, forward.z * step);
   }, { passive: false });
 
   return {
@@ -762,9 +1099,12 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
       ownerName = name || '';
       closeForm();
       closeCard();
-      Object.assign(view, START, { targetYaw: START.yaw, targetPitch: START.pitch, targetRadius: START.radius });
+      clearInput();
+      lastTime = null;
+      resetView();
       placeCamera();
       labels.hidden = false;
+      controls.hidden = false;
       applyProjects([]);
       canvas.style.cursor = 'grab';
       load(++loadToken);
@@ -773,10 +1113,11 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
       privacy.leave();
       active = false;
       loadToken++;
-      pointers.clear();
+      clearInput();
       closeForm();
       closeCard();
       labels.hidden = true;
+      controls.hidden = true;
       canvas.style.cursor = '';
     },
     update(t) {
@@ -785,24 +1126,57 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
       const k = 1 - Math.exp(-dt * 9);
       view.yaw += (view.targetYaw - view.yaw) * k;
       view.pitch += (view.targetPitch - view.pitch) * k;
-      view.radius += (view.targetRadius - view.radius) * k;
+      if (active && !typing() && formVeil.hidden) {
+        forward.set(-Math.sin(view.yaw), 0, -Math.cos(view.yaw));
+        right.set(Math.cos(view.yaw), 0, -Math.sin(view.yaw));
+        movement.set(0, 0, 0);
+        movement.addScaledVector(forward, Number(keys.has('KeyW')) - Number(keys.has('KeyS')));
+        movement.addScaledVector(right, Number(keys.has('KeyD')) - Number(keys.has('KeyA')));
+        movement.y = Number(keys.has('KeyQ')) - Number(keys.has('KeyE'));
+        if (movement.lengthSq()) {
+          movement.normalize().multiplyScalar(dt * 3.2);
+          movement.x *= 2.5;
+          movement.z *= 2.5;
+          moveCamera(movement.x, movement.y, movement.z);
+        }
+      }
       placeCamera();
       const still = reduceMotion.matches;
+      treasureLight.intensity=0;
       for (const slot of slots) {
         // 눌러 볼 수 있는 상자와 선택된 상자에만 은은한 빛이 돈다.
         const want = selected === slot ? 0.32 : hovered === slot && clickable(slot) ? 0.2 : 0;
         slot.glow += (want - slot.glow) * (1 - Math.exp(-dt * 10));
-        slot.mesh.material.emissiveIntensity = slot.glow;
-        if (slot.project) {
-          slot.pop = Math.max(slot.pop - dt / 0.35, 0);
-          const grow = still ? 1 : 1 - slot.pop * slot.pop * slot.pop;
-          slot.gem.scale.setScalar(grow * (selected === slot ? 1.18 : 1));
-          slot.gem.rotation.y = still ? 0 : t * 0.7 + slot.phase;
-          slot.gem.position.y = slot.box.h + 0.62 + (still ? 0 : Math.sin(t * 1.3 + slot.phase) * 0.05);
+        slot.bodyMaterial.emissiveIntensity = slot.glow;
+        const targetWrap = slot.project && selected !== slot ? 1 : 0;
+        const step = dt / 0.85;
+        slot.wrap = still ? targetWrap : THREE.MathUtils.clamp(slot.wrap + Math.sign(targetWrap-slot.wrap)*Math.min(step,Math.abs(targetWrap-slot.wrap)),0,1);
+        const lidProgress = THREE.MathUtils.smoothstep(slot.wrap,0,0.65);
+        const ribbonProgress = THREE.MathUtils.smoothstep(slot.wrap,0.5,1);
+        const treasureStrength=slot.project?THREE.MathUtils.smoothstep(1-lidProgress,0.12,0.85):0;
+        slot.treasure.visible=treasureStrength>0.001;
+        const shimmer=still?1:0.94+Math.sin(t*3.3)*0.04+Math.sin(t*7.1)*0.02;
+        slot.treasureFillMaterial.uniforms.strength.value=treasureStrength;
+        slot.treasureFillMaterial.uniforms.time.value=still?0:t;
+        slot.glowMaterial.opacity=treasureStrength*0.95*shimmer;
+        slot.poolMaterial.opacity=treasureStrength*0.48;
+        slot.beamMaterial.uniforms.strength.value=treasureStrength*shimmer;
+        slot.sparkleMaterial.uniforms.strength.value=treasureStrength;
+        slot.sparkleMaterial.uniforms.time.value=still?0:t;
+        if(treasureStrength>0.001) {
+          slot.root.localToWorld(treasureLight.position.set(0,slot.box.h+0.3,0));
+          treasureLight.intensity=6*treasureStrength*shimmer;
         }
+        slot.lid.rotation.x = -1.42 * (1-lidProgress);
+        slot.lidRibbon.visible = slot.bodyRibbon.visible = ribbonProgress > 0.001;
+        slot.lidRibbon.scale.setScalar(Math.max(0.001,ribbonProgress));
+        slot.bodyRibbon.scale.set(1,Math.max(0.001,ribbonProgress),1);
+        slot.pop = Math.max(0,slot.pop-dt/0.6);
+        const bounce = still ? 0 : Math.sin((1-slot.pop)*Math.PI*2)*slot.pop*0.035;
+        slot.root.scale.set(1-bounce*0.5,1+bounce,1-bounce*0.5);
         slot.label.style.display = '';
         screen.copy(slot.anchor);
-        screen.y += slot.project ? 1.18 : 0.14;
+        screen.y += slot.project ? 0.25 : 0.14;
         screen.project(camera);
         if (screen.z >= 1) {
           slot.label.style.display = 'none';
