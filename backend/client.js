@@ -144,6 +144,29 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
       homeId(id); const { api, member } = await requireMember('student');
       return unwrap(await api.from('igloos').update({ is_public: Boolean(isPublic) }).eq('id', id).eq('owner_id', member.id).select(HOME_COLUMNS).single());
     },
+    // 동의한 실험 대상자의 오늘 방문을 서버 시간(한국) 기준으로 한 번 기록한다.
+    async recordVisit() {
+      const { api } = await requireMember();
+      return unwrap(await api.rpc('record_visit'));
+    },
+
+    async getMemberVisitCounts() {
+      const { api } = await requireMember();
+      return unwrap(await api.rpc('get_member_visit_counts'));
+    },
+
+    // 개인별 기록 대신 날짜별 집계만 반환한다. 비로그인은 접근할 수 없다.
+    // 개별 로그가 아닌 한국 날짜 기준 방문 횟수/누적 횟수 집계만 제공한다.
+    async getVisitCounts(days = 14) {
+      if (!Number.isInteger(days) || days < 1 || days > 90) throw new Error('조회 기간은 1~90일이어야 합니다.');
+      const { api } = await requireMember();
+      return unwrap(await api.rpc('get_visit_counts', { p_days: days }));
+    },
+    async getVisitTrend(days = 14) {
+      if (!Number.isInteger(days) || days < 1 || days > 90) throw new Error('조회 기간은 1~90일이어야 합니다.');
+      const { api } = await requireMember();
+      return unwrap(await api.rpc('get_visit_trend', { p_days: days }));
+    },
     async getProjects(id) {
       homeId(id); const { api } = await requireMember();
       let result = await api.from('projects').select(PROJECT_COLUMNS).eq('igloo_id', id).order('created_at', { ascending: false }).limit(100);
