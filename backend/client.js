@@ -148,9 +148,6 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
       homeId(id); const { api } = await requireMember();
       let result = await api.from('projects').select(PROJECT_COLUMNS).eq('igloo_id', id).order('created_at', { ascending: false }).limit(100);
       // 공유 DB의 추가 열 적용 전에도 기존 프로젝트는 읽을 수 있게 한다.
-      if (result.error && ['42703', 'PGRST204'].includes(result.error.code)) {
-        result = await api.from('projects').select('id,igloo_id,owner_id,title,description,url,created_at').eq('igloo_id', id).order('created_at', { ascending: false }).limit(100);
-      }
       const rows = unwrap(result);
       return Promise.all(rows.map(row => withImage(api, row)));
     },

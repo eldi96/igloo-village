@@ -1,6 +1,7 @@
 // 일반 이글루 내부. 언리얼 작업이 나오기 전까지 쓰는 임시 3D 방이다.
 // 빛과 그림자는 텍스처에 미리 그려 그림자 계산 없이 가볍게 돌린다.
 import * as THREE from 'three';
+import { mountPrivacyPanel } from './privacy-panel.js';
 import { mountProjectFeedback } from './project-feedback.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
@@ -97,6 +98,21 @@ const STYLE = `
   .room-card-dismiss:hover { background: rgba(255,255,255,.1); }
   .room-card .feedback-submit .room-btn { transform: none; transition: background-color 120ms ease; }
   @media (max-width: 720px) { .room-card-body { padding: 20px; } }
+  .room-privacy { position: fixed; top: 72px; left: 24px; z-index: 5; max-width: calc(100vw - 48px); }
+  .igloo-switch { position: relative; display: flex; align-items: center; box-sizing: border-box; width: 96px; height: 46px; padding: 5px; border: 1px solid rgba(255,245,230,.42); border-radius: 999px; background: linear-gradient(135deg, rgba(255,246,230,.19), rgba(255,246,230,.06)); backdrop-filter: blur(14px) saturate(125%); -webkit-backdrop-filter: blur(14px) saturate(125%); box-shadow: inset 0 1px rgba(255,255,255,.4), inset 0 -1px rgba(255,255,255,.08); color: #fff3e4; cursor: pointer; transition: border-color 180ms ease, background-color 180ms ease; }
+  .igloo-switch-knob { position: relative; flex: none; box-sizing: border-box; width: 34px; height: 34px; border: 1px solid rgba(255,255,255,.6); border-radius: 50%; background: linear-gradient(145deg, rgba(255,255,255,.65), rgba(255,242,220,.18)); box-shadow: inset 0 1px 2px rgba(255,255,255,.7); transform: translateX(0); transition: transform 200ms cubic-bezier(.23,1,.32,1), background 180ms ease; }
+  .igloo-switch[aria-checked=true] { border-color: rgba(165,247,204,.65); background: linear-gradient(135deg, rgba(137,234,183,.22), rgba(137,234,183,.06)); }
+  .igloo-switch[aria-checked=true] .igloo-switch-knob { transform: translateX(50px); border-color: rgba(207,255,228,.85); background: linear-gradient(145deg, rgba(209,255,229,.85), rgba(81,202,137,.3)); }
+  .igloo-switch-label { position: absolute; right: 14px; font: 600 10px system-ui; letter-spacing: .08em; color: rgba(255,243,228,.75); }
+  .igloo-switch[aria-checked=true] .igloo-switch-label { right: auto; left: 16px; color: #d7ffe9; }
+  .igloo-switch:focus-visible { outline: 2px solid #fff0dd; outline-offset: 4px; }
+  .igloo-switch:disabled { cursor: progress; opacity: .7; }
+  @media (hover: hover) { .igloo-switch:hover:not(:disabled) { border-color: rgba(255,255,255,.8); } }
+  .igloo-switch-message { box-sizing: border-box; max-width: 245px; margin: 12px 0 0; padding: 11px 14px; border: 1px solid rgba(255,245,230,.26); border-radius: 14px; background: linear-gradient(135deg, rgba(255,239,219,.14), rgba(38,24,19,.22)); backdrop-filter: blur(14px) saturate(125%); -webkit-backdrop-filter: blur(14px) saturate(125%); box-shadow: inset 0 1px rgba(255,255,255,.25); color: #fff3e4; font-size: 12px; line-height: 1.6; }
+  @media (prefers-reduced-motion: reduce) { .igloo-switch-knob { transition: none; } }
+  .room-project-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+  .room-project-heading h2 { margin: 0; }
+  .room-project-heading button { flex: none; min-height: 34px; padding: 5px 10px; border-radius: 999px; font-size: 12px; }
   @media (prefers-reduced-motion: reduce) { .room-form, .room-card { transition-property: opacity; } @starting-style { .room-form, .room-card { transform: none; } } .room-btn:active:not(:disabled), .room-icon:active:not(:disabled) { transform: none; } }
 `;
 
@@ -287,7 +303,7 @@ const ICON_NEXT = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" s
 // 첫 화면 캡처가 생기기 전까지 쓰는 예시 그림.
 
 
-export function createRoom({ canvas, backend }) {
+export function createRoom({ canvas, backend, onRoomPublicChange = () => {} }) {
   const style = document.createElement('style');
   style.textContent = STYLE;
   document.head.appendChild(style);
@@ -371,7 +387,7 @@ export function createRoom({ canvas, backend }) {
   card.className = 'room-ui room-card';
   card.hidden = true;
   card.setAttribute('aria-label', '프로젝트 상세');
-  card.innerHTML = `<div class="room-card-top"><div class="room-pager"><button type="button" class="room-icon" data-prev aria-label="이전 프로젝트">${ICON_PREV}</button><button type="button" class="room-icon" data-next aria-label="다음 프로젝트">${ICON_NEXT}</button></div></div><div class="room-shot"><img data-image alt="" hidden><p data-no-image>등록된 이미지가 없어요.</p></div><div class="room-author"><span class="room-avatar" data-avatar></span><span data-owner></span></div><h2 data-title></h2><div class="room-link" data-host></div><p class="room-desc" data-description></p><div class="room-howto"><h3>사용법</h3><p data-instructions></p></div><div class="room-card-actions"><a class="room-btn primary" data-open target="_blank" rel="noopener noreferrer">프로젝트 열기 →</a><button type="button" class="room-btn" data-edit>프로젝트 수정</button><button type="button" class="room-btn quiet" data-remove>이 상자 비우기</button></div><p class="room-error" role="alert" data-card-error></p><section class="project-feedback" aria-label="댓글과 반응"></section>`;
+  card.innerHTML = `<div class="room-card-top"><div class="room-pager"><button type="button" class="room-icon" data-prev aria-label="이전 프로젝트">${ICON_PREV}</button><button type="button" class="room-icon" data-next aria-label="다음 프로젝트">${ICON_NEXT}</button></div></div><div class="room-shot"><img data-image alt="" hidden><p data-no-image>등록된 이미지가 없어요.</p></div><div class="room-author"><span class="room-avatar" data-avatar></span><span data-owner></span></div><div class="room-project-heading"><h2 data-title></h2></div><div class="room-link" data-host></div><p class="room-desc" data-description></p><div class="room-howto"><h3>사용법</h3><p data-instructions></p></div><div class="room-card-actions"><a class="room-btn primary" data-open target="_blank" rel="noopener noreferrer">프로젝트 열기 →</a><button type="button" class="room-btn" data-edit>프로젝트 수정</button><button type="button" class="room-btn quiet" data-remove>이 상자 비우기</button></div><p class="room-error" role="alert" data-card-error></p><section class="project-feedback" aria-label="댓글과 반응"></section>`;
   const cardBody = document.createElement('div');
   cardBody.className = 'room-card-body';
   cardBody.append(...card.childNodes);
@@ -386,6 +402,12 @@ export function createRoom({ canvas, backend }) {
   let closeCardTimer = null;
   document.body.append(labels, formVeil, card);
 
+  const privacyRoot = document.createElement('section');
+  privacyRoot.className = 'room-ui room-privacy';
+  privacyRoot.hidden = true;
+  privacyRoot.setAttribute('aria-label', '방 전체 공개 설정');
+  document.body.append(privacyRoot);
+  const privacy = mountPrivacyPanel(privacyRoot, backend, { onRoomChange: onRoomPublicChange });
   const feedback = mountProjectFeedback(card.querySelector('.project-feedback'), backend);
   const q = selector => card.querySelector(selector);
   const form = formVeil.querySelector('form');
@@ -732,10 +754,11 @@ export function createRoom({ canvas, backend }) {
       camera.fov = aspect < 1.1 ? 68 : 50;
       camera.updateProjectionMatrix();
     },
-    enter({ home: nextHome, isMine: mine, ownerName: name }) {
+    enter({ home: nextHome, isMine: mine, isPublic = false, ownerName: name }) {
       active = true;
       home = nextHome;
       isMine = Boolean(mine);
+      privacy.enter(nextHome, isMine, isPublic);
       ownerName = name || '';
       closeForm();
       closeCard();
@@ -747,6 +770,7 @@ export function createRoom({ canvas, backend }) {
       load(++loadToken);
     },
     leave() {
+      privacy.leave();
       active = false;
       loadToken++;
       pointers.clear();
