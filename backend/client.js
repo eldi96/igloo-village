@@ -236,17 +236,39 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
     async getProjectFeedback(projectId) {
       if (!UUID.test(projectId)) throw new Error('존재하지 않는 프로젝트입니다.');
       const { api } = await requireMember();
+      const columns = 'id,member_id,body,created_at,parent_id,deleted_at,members!project_comments_member_id_fkey(display_name)';
       const [comments, reactions] = await Promise.all([
-        api.from('project_comments').select('id,member_id,body,created_at,members(display_name)').eq('project_id', projectId).order('created_at', { ascending: false }).limit(100),
+        api.from('project_comments').select(columns).eq('project_id', projectId).is('parent_id', null).order('created_at', { ascending: false }).order('id').limit(100),
         api.from('project_reactions').select('member_id,emoji').eq('project_id', projectId).limit(1000)
       ]);
-      return { comments: unwrap(comments), reactions: unwrap(reactions) };
+      const roots = unwrap(comments), all = [...roots];
+      // 원댓글을 먼저 고른 뒤 답글을 읽어, 답글만 남거나 중간에 잘리는 것을 막는다.
+      if (roots.length) {
+        for (let offset = 0; ; offset += 1000) {
+          const replies = unwrap(await api.from('project_comments').select(columns).eq('project_id', projectId)
+            .in('parent_id', roots.map(row => row.id)).order('created_at').order('id').range(offset, offset + 999));
+          all.push(...replies);
+          if (replies.length < 1000) break;
+        }
+      }
+      return { comments: all, reactions: unwrap(reactions) };
     },
-    async addProjectComment(projectId, body) {
+    async addProjectComment(projectId, body, parentId = null) {
       const text = String(body ?? '').trim();
       if (!UUID.test(projectId) || !text || text.length > 1000) throw new Error('댓글은 1~1,000자로 작성해 주세요.');
+      if (parentId !== null && !UUID.test(parentId)) throw new Error('답글을 남길 댓글을 확인해 주세요.');
       const { api, member } = await requireMember();
-      return unwrap(await api.from('project_comments').insert({ project_id: projectId, member_id: member.id, body: text }).select('id').single());
+      const row = unwrap(await api.from('project_comments').insert({ project_id: projectId, member_id: member.id, body: text, parent_id: parentId }).select('id').single());
+      events.dispatchEvent(new Event('comments'));
+      return row;
+    },
+    async deleteProjectComment(id) {
+      if (!UUID.test(id)) throw new Error('삭제할 댓글을 확인해 주세요.');
+      const { api, member } = await requireMember();
+      const row = unwrap(await api.from('project_comments').update({ body: '', deleted_at: new Date().toISOString() })
+        .eq('id', id).eq('member_id', member.id).is('deleted_at', null).select('id').single());
+      events.dispatchEvent(new Event('comments'));
+      return row;
     },
     async setProjectReaction(projectId, emoji, active) {
       if (!UUID.test(projectId) || !['👍', '❤️'].includes(emoji)) throw new Error('올바른 프로젝트와 반응을 선택해 주세요.');
@@ -258,6 +280,33 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
         const { error } = await api.from('project_reactions').delete().eq('project_id', projectId).eq('member_id', member.id).eq('emoji', emoji);
         if (error) throw error;
       }
+    },
+    onCommentChange(callback) {
+      events.addEventListener('comments', callback);
+      return () => events.removeEventListener('comments', callback);
+    },
+    async getUnreadMailboxHomes() {
+      const api = await ready();
+      return unwrap(await api.rpc('get_unread_mailbox_homes')).map(row => row.igloo_id);
+    },
+    async getCommentNotifications() {
+      const { api, member } = await requireMember();
+      return unwrap(await api.from('comment_notifications')
+        .select('id,project_id,created_at,projects(title,igloo_id),project_comments(body,parent_id,members!project_comments_member_id_fkey(display_name))')
+        .eq('recipient_id', member.id).is('read_at', null).order('created_at', { ascending: false }).limit(100));
+    },
+    async markCommentNotificationsRead(projectId, before) {
+      if (!UUID.test(projectId) || !Number.isFinite(Date.parse(before))) throw new Error('알림을 확인할 프로젝트를 선택해 주세요.');
+      const { api, member } = await requireMember();
+      return unwrap(await api.from('comment_notifications').update({ read_at: new Date().toISOString() })
+        .eq('recipient_id', member.id).eq('project_id', projectId).is('read_at', null).lte('created_at', before).select('id'));
+    },
+    async subscribeCommentNotifications(callback, onStatus = () => {}) {
+      const { api, member } = await requireMember();
+      const channel = api.channel('igloo-comment-notifications-' + member.id)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'comment_notifications', filter: 'recipient_id=eq.' + member.id }, callback)
+        .subscribe(onStatus);
+      return () => api.removeChannel(channel);
     },
     async getInbox() {
       const { api, member } = await requireMember();
