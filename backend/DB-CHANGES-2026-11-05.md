@@ -46,3 +46,7 @@
 - 알림 내용 RLS를 우회해 ID만 집계하는 의도된 SECURITY DEFINER 함수이며 인자 없음, search_path 고정, 쓰기 작업 없음. 공개 함수 실행 관련 보안 점검 안내가 발생할 수 있음.
 - 원격 이력: expose_mailbox_glow_home_ids. 증분 파일 mailbox-glow.sql, 롤백 검증 verify-mailbox-glow.sql 추가. schema.sql에 동일 정의 추가.
 - 모든 화면은 10초마다 점등 목록 조회. 댓글 작성·삭제한 현재 화면과 알림 수신자 화면은 즉시 갱신. 주인이 읽으면 나머지 화면은 다음 조회 때 소등.
+
+## 6. main 통합 (2026-11-05)
+
+- 팀원 최신 main의 방문 통계 SQL 블록을 원문 그대로 보존하고 이번 댓글·우편함 정의를 함께 병합했다. 병합 작업 중 DB 서버 SQL 재실행·재적용은 하지 않았다.
