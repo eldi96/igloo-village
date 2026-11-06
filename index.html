@@ -1077,7 +1077,7 @@ import('./village.js?v=bear-observatory')
   .then(m => {
     village = m.addVillage(scene, { places, hub: HUB, heightAt, rng, lighthouse: LIGHTHOUSE, statsSite: STATS_SITE, mailPreviewHome: TEST_IGLOO_INDEX });
     commentMailbox.setWorld(village);
-    import('./polar-bear.js?v=smooth-paws')
+    import('./polar-bear.js?v=tail-skin-fix')
       .then(({ addPolarBear }) => addPolarBear(scene, { obstacles: village.walkingObstacles, heightAt }))
       .then(bear => { polarBear = bear; })
       .catch(error => console.warn('북극곰을 불러오지 못했어요:', error));
