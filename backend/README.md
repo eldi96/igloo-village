@@ -1,5 +1,27 @@
 # Supabase 연결 상태와 다음 작업
 
+## 바깥 불빛 보상 (2026-11-05)
+
+- exterior-light.sql 원격 적용 완료(unlock_soft_blue_exterior_light). 프로젝트가 2개인 시점에 영구 해금. 기존 충족자도 반영, 기존 주황 불빛은 자동 변경하지 않음.
+- igloos.exterior_light warm/blue, members.exterior_light_unlocked_at. get_exterior_light/set_exterior_light RPC는 본인 학생 계정만 호출. 직접 UPDATE 권한 없음. 공개 지도에는 색상만 포함. 소유자 변경 시 warm 초기화.
+- 기존 카드 해금 트리거를 확장하며 사용자 행 잠금 후 판정. 검증: verify-exterior-light.sql(rollback), verify-access.sql. schema.sql 전체·증분 파일 재실행 금지.
+
+## 프로젝트 카드 테마 (2026-11-05)
+
+- `card-themes.sql` 원격 적용 완료: unlock_persistent_project_card_themes. 기존 프로젝트 주인 해금, 첫 등록 트리거로 영구 해금. 삭제 시 회수하지 않음.
+- members.card_theme 기본 glass, 선택값 rose/cream/graphite/mint. card_theme_unlocked_at은 DB만 기록. 기존 UPDATE(display_name) 권한 유지.
+- get_igloo_card_theme(p_home), set_card_theme(p_theme)는 승인 회원 권한으로 호출. 공개 방 방문자는 주인 테마를 조회하지만 변경은 본인 학생 설정만 가능. 비공개 방은 주인만 조회.
+- rollback 검증 `verify-card-themes.sql`, 전체 권한 검증 `verify-access.sql`에 직접 수정 차단 포함. 전체 schema.sql·증분 SQL 재실행 금지.
+
+## 성장 실험 통계 (2026-11-05 추가)
+
+- `visit-experiment.sql`은 운영 DB 적용 완료. 기존 학생 5명 고정, 개발팀 4명 제외 명단 별도 보관, 이후 승인 학생은 자동 cohort=2 등록. 개발팀 명단을 바꾸려면 private.visit_exclusions를 별도로 관리한다.
+- `get_visit_experiment(1~90)`은 승인 회원에게 사용자별 이름·일별/누적 횟수를 제공한다. 익명 접근·원본 방문 테이블 직접 접근은 차단. 새로 집계하는 사용자에게 이 조회 범위를 안내한다.
+- 예정일 11/6과 실제 최초 신규 등록일을 구분. 실제 등록일 기준으로 기존 5명의 완료일 평균 비교. 기준 기간 기록은 선택한 조회 범위에 의존하지 않는다. 방문 빈도 변화는 관찰 지표이며 인과관계 확정 지표가 아니다.
+- 원격 이력: visit_experiment_dashboard_and_student_enrollment, use_actual_new_student_date_for_visit_comparison. 증분 SQL과 schema.sql을 운영에 재실행하지 않는다.
+- 검증: `verify-visit-experiment.sql`, `verify-visit-counts.sql`, `verify-access.sql`은 rollback 시험. 기존 일일 집계·회원·프로젝트·우편 데이터 보존.
+- 보안 점검의 private.visit_exclusions 정책 없음 INFO는 직접 접근을 막기 위한 의도된 구성. [RLS 점검 설명](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy). 이전 초대 코드·우편함 공개 함수·비밀번호 설정 경고는 이번 범위에서 변경하지 않음.
+
 - 프로젝트: `igloo-village` / 서울 리전
 - 프로젝트 참조: `pvqnobhmqcfkeneccsjk`
 - SDK: `@supabase/supabase-js@2.118.0`, jsDelivr ESM. 버전을 고정한다.
@@ -72,3 +94,10 @@ DB 설정이 끝났다는 이유로 테스트용 수강생이나 화면의 소�
 ### 전체 마을에서 점등 보기 (추가 적용)
 
 기존의 본인 화면만 점등하던 동작을 변경했다. get_unread_mailbox_homes RPC로 이글루 ID만 모두에게 공개하고 알림 본문 권한은 유지한다. mailbox-glow.sql 원격 적용 완료. 전체 화면은 10초 주기로 갱신하고, 현재 화면의 댓글 작성·삭제와 본인 읽음 처리는 즉시 재조회한다. 추가 테이블·컬럼·RLS 변경 없음. 의도된 공개 SECURITY DEFINER 함수: [공개 함수 권한 점검](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable).
+
+
+## 관측소 개발팀 전용 (2026-11-06)
+
+- observatory-access.sql 원격 적용 완료: private.chat_members의 승인된 개발팀 4명만 출입·통계 조회. can_view_observatory RPC 추가, 기존 실험/횟수/추이 함수의 권한 검사만 변경. 테이블·방문 수집·개별 본인 접속 횟수 조회 변경 없음. 기존 서버 집계식 보존.
+- verify-observatory-access.sql은 실제 계정의 익명/일반 수강생 거부·개발팀 4명 허용을 읽기만으로 검증하고 권한 컨텍스트를 rollback. 기존 집계 계산 검증 파일은 임시 시험 회원에게 트랜잭션 내 조회 권한을 부여하고 rollback.
+- 이번 변경 이후 관측소와 개발팀 대화의 권한 명단은 동일하며, 개발팀 변경 시 private.chat_members를 관리한다. 통계 제외 명단(private.visit_exclusions)은 기존 고정 명단으로 별개 유지.

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { addMailboxes } from './mailboxes.js?v=champagne-glow';
+import { addMailboxes } from './mailboxes.js?v=hover-lid';
 
 export function addVillage(scene, ctx) {
-  const { places, hub, heightAt, rng, lighthouse, mailPreviewHome = null } = ctx;
+  const { places, hub, heightAt, rng, lighthouse, statsSite, mailPreviewHome = null } = ctx;
   const root = new THREE.Group();
   root.name = 'village';
   scene.add(root);
@@ -57,6 +57,7 @@ export function addVillage(scene, ctx) {
   }
   const pondDistance = (x, z) => Math.hypot((x - hub.x) / 4.5, (z - hub.z) / 3.5);
   function available(x, z, r, roadside = false) {
+    if (statsSite && dist(x, z, statsSite.x, statsSite.z) < statsSite.radius + r + .3) return false;
     if (lighthouse && dist(x, z, lighthouse.x, lighthouse.z) < lighthouse.radius + 1.2 + r) return false;
     if (!flatSnow(x, z, r) || !doorClear(x, z, r) || !iglooClear(x, z, r) || pondDistance(x, z) < 1.2 + r / 3) return false;
     for (const road of roads) for (let j = 1; j < road.points.length; j++) {
@@ -69,6 +70,10 @@ export function addVillage(scene, ctx) {
   const canvas = document.createElement('canvas'); canvas.width = canvas.height = 2048;
   const ink = canvas.getContext('2d'), px = x => (x + 70) * 2048 / 140, pz = z => (z + 52) * 2048 / 104;
   function clearRoad(q, owner, margin = 1.1) {
+    if (statsSite) {
+      const dx=q.x-statsSite.x,dz=q.z-statsSite.z,a=statsSite.yaw??0,s=statsSite.scale??1;
+      if (Math.abs(Math.cos(a)*dx-Math.sin(a)*dz)<2.7*s && Math.abs(Math.sin(a)*dx+Math.cos(a)*dz)<2.35*s) return false;
+    }
     if (Math.abs(q.x) > 63 || q.z < -46 || q.z > 37 || heightAt(q.x, q.z) > 0.6) return false;
     if (lighthouse && dist(q.x, q.z, lighthouse.x, lighthouse.z) < lighthouse.radius + margin) return false;
     if (Math.hypot((q.x - hub.x) / 5.1, (q.z - hub.z) / 4.1) < 1) return false;
@@ -228,6 +233,16 @@ export function addVillage(scene, ctx) {
       const threshold = { x: p.x + forward.x * (p.radius * 0.92 + 1.13), z: p.z + forward.z * (p.radius * 0.92 + 1.13) };
       const landing = { x: p.x + forward.x * (p.radius + 1.45), z: p.z + forward.z * (p.radius + 1.45) };
       drawRoad([threshold, landing, ...branch], 0.55, false, threshold);
+    }
+  }
+  if (statsSite) {
+    const { target } = nearest(statsSite);
+    if (target) {
+      const start = { x: statsSite.doorX, z: statsSite.doorZ };
+      const branch = route(start, target);
+      const yaw = statsSite.yaw ?? 0, scale = statsSite.scale ?? 1;
+      const threshold = { x: statsSite.x + (.88 * Math.cos(yaw) + 2.65 * Math.sin(yaw)) * scale, z: statsSite.z + (-.88 * Math.sin(yaw) + 2.65 * Math.cos(yaw)) * scale };
+      if (branch.length > 1) drawRoad([threshold, ...branch], .65);
     }
   }
   const softened = document.createElement('canvas'); softened.width = softened.height = 2048;
@@ -458,10 +473,31 @@ export function addVillage(scene, ctx) {
   }
   return {
     fireSpot,
+    // 실제 배치 결과를 동물 길찾기에도 사용한다. 장식도 고체로 취급한다.
+    walkingObstacles: [
+      ...occupied.map(o => ({ ...o })),
+      { x: hub.x, z: hub.z, r: 5.1 },
+      ...(lighthouse ? [{ x: lighthouse.x, z: lighthouse.z, r: lighthouse.radius + 0.5 }] : []),
+      ...(statsSite ? [
+        { x: statsSite.x, z: statsSite.z, r: statsSite.radius + 0.25 },
+        { x: statsSite.doorX, z: statsSite.doorZ, r: 0.85 }
+      ] : []),
+      ...places.flatMap(p => {
+        const c = Math.cos(p.yaw), s = Math.sin(p.yaw);
+        return [
+          { x: p.x, z: p.z, r: p.radius + 0.25 },
+          ...[0.45, 0.75, 1].map(t => ({ x: p.x + (p.doorX - p.x) * t, z: p.z + (p.doorZ - p.z) * t, r: 1.1 })),
+          { x: p.x + c * -1.48 + s * (p.radius + 0.95), z: p.z - s * -1.48 + c * (p.radius + 0.95), r: 0.48 },
+          { x: p.x + c * (p.radius + 1), z: p.z - s * (p.radius + 1), r: 0.4 }
+        ];
+      }),
+      ...(fireSpot ? [{ x: fireSpot.x + 1.65, z: fireSpot.z - 0.15, r: 0.55 }] : [])
+    ],
     setUnreadMailboxes(homes) { mailboxes.userData.setUnreadHomes(homes); },
+    setMailboxHovered(home) { mailboxes.userData.setHoveredHome(home); },
     pickMailbox(ray) { return mailboxes.userData.pickHome(ray); },
     update(timeSeconds, camera, viewportHeight) {
-      if (camera) mailboxes.userData.update(camera, viewportHeight);
+      if (camera) mailboxes.userData.update(camera, viewportHeight, timeSeconds);
       if (beacon) beacon.rotation.y = timeSeconds * 0.12;
       const flicker = 0.86 + 0.09 * Math.sin(timeSeconds * 11.7) + 0.05 * Math.sin(timeSeconds * 23.1);
       if (fireLight) fireLight.intensity = 5 * flicker;

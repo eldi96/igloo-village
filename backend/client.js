@@ -2,7 +2,7 @@ import { supabaseConfig } from './config.js';
 
 // 마을의 3D 화면과 분리한 데이터 연결부. 권한은 DB의 RLS에서 검사한다.
 const SDK_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-const HOME_COLUMNS = 'id,owner_id,is_public,claimed_at,latest_project_at';
+const HOME_COLUMNS = 'id,owner_id,is_public,claimed_at,latest_project_at,exterior_light';
 const PROJECT_COLUMNS = 'id,igloo_id,owner_id,title,description,url,instructions,image_path,created_at';
 const MAIL_COLUMNS = 'id,sender_id,recipient_id,body,link,created_at,read_at';
 const CHAT_COLUMNS = 'id,sender_id,body,created_at';
@@ -144,6 +144,24 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
       homeId(id); const { api, member } = await requireMember('student');
       return unwrap(await api.from('igloos').update({ is_public: Boolean(isPublic) }).eq('id', id).eq('owner_id', member.id).select(HOME_COLUMNS).single());
     },
+    async getCardTheme(id) {
+      homeId(id); const { api } = await requireMember();
+      return unwrap(await api.rpc('get_igloo_card_theme', { p_home: id }));
+    },
+    async getExteriorLight() {
+      const { api } = await requireMember('student');
+      return unwrap(await api.rpc('get_exterior_light'));
+    },
+    async setExteriorLight(color) {
+      if (!['warm','blue'].includes(color)) throw new Error('불빛 색상을 확인해 주세요.');
+      const { api } = await requireMember('student');
+      return unwrap(await api.rpc('set_exterior_light', { p_color: color }));
+    },
+    async setCardTheme(theme) {
+      if (!['glass','rose','cream','graphite','mint'].includes(theme)) throw new Error('테마를 확인해 주세요.');
+      const { api } = await requireMember('student');
+      return unwrap(await api.rpc('set_card_theme', { p_theme: theme }));
+    },
     // 동의한 실험 대상자의 오늘 방문을 서버 시간(한국) 기준으로 한 번 기록한다.
     async recordVisit() {
       const { api } = await requireMember();
@@ -153,6 +171,15 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
     async getMemberVisitCounts() {
       const { api } = await requireMember();
       return unwrap(await api.rpc('get_member_visit_counts'));
+    },
+    async canViewObservatory() {
+      const { api } = await requireMember();
+      return Boolean(unwrap(await api.rpc('can_view_observatory')));
+    },
+    async getVisitExperiment(days = 14) {
+      if (!Number.isInteger(days) || days < 1 || days > 90) throw new Error('조회 기간은 1~90일이어야 합니다.');
+      const { api } = await requireMember();
+      return unwrap(await api.rpc('get_visit_experiment', { p_days: days }));
     },
 
     // 개인별 기록 대신 날짜별 집계만 반환한다. 비로그인은 접근할 수 없다.
