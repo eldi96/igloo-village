@@ -473,6 +473,26 @@ export function addVillage(scene, ctx) {
   }
   return {
     fireSpot,
+    // 실제 배치 결과를 동물 길찾기에도 사용한다. 장식도 고체로 취급한다.
+    walkingObstacles: [
+      ...occupied.map(o => ({ ...o })),
+      { x: hub.x, z: hub.z, r: 5.1 },
+      ...(lighthouse ? [{ x: lighthouse.x, z: lighthouse.z, r: lighthouse.radius + 0.5 }] : []),
+      ...(statsSite ? [
+        { x: statsSite.x, z: statsSite.z, r: statsSite.radius + 0.25 },
+        { x: statsSite.doorX, z: statsSite.doorZ, r: 0.85 }
+      ] : []),
+      ...places.flatMap(p => {
+        const c = Math.cos(p.yaw), s = Math.sin(p.yaw);
+        return [
+          { x: p.x, z: p.z, r: p.radius + 0.25 },
+          ...[0.45, 0.75, 1].map(t => ({ x: p.x + (p.doorX - p.x) * t, z: p.z + (p.doorZ - p.z) * t, r: 1.1 })),
+          { x: p.x + c * -1.48 + s * (p.radius + 0.95), z: p.z - s * -1.48 + c * (p.radius + 0.95), r: 0.48 },
+          { x: p.x + c * (p.radius + 1), z: p.z - s * (p.radius + 1), r: 0.4 }
+        ];
+      }),
+      ...(fireSpot ? [{ x: fireSpot.x + 1.65, z: fireSpot.z - 0.15, r: 0.55 }] : [])
+    ],
     setUnreadMailboxes(homes) { mailboxes.userData.setUnreadHomes(homes); },
     setMailboxHovered(home) { mailboxes.userData.setHoveredHome(home); },
     pickMailbox(ray) { return mailboxes.userData.pickHome(ray); },

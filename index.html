@@ -1072,10 +1072,15 @@ function fitRipples(ig) {
 // 마을 소품은 별도 파일. 없어도 장면은 그대로 뜬다
 let village = null;
 let santa = null;
-import('./village.js?v=soft-slot-glow')
+let polarBear = null;
+import('./village.js?v=bear-observatory')
   .then(m => {
     village = m.addVillage(scene, { places, hub: HUB, heightAt, rng, lighthouse: LIGHTHOUSE, statsSite: STATS_SITE, mailPreviewHome: TEST_IGLOO_INDEX });
     commentMailbox.setWorld(village);
+    import('./polar-bear.js?v=tail-skin-fix')
+      .then(({ addPolarBear }) => addPolarBear(scene, { obstacles: village.walkingObstacles, heightAt }))
+      .then(bear => { polarBear = bear; })
+      .catch(error => console.warn('북극곰을 불러오지 못했어요:', error));
     renderer.shadowMap.needsUpdate = true;
     import('./santa.js?v=idle-motion')
       .then(({ addSanta }) => addSanta(scene, { fireSpot: village.fireSpot, heightAt, height: R * 0.8 }))
@@ -1559,6 +1564,7 @@ function frame() {
   mountainTitle.visible = titleOpacity > 0.01;
   if (village) village.update(t, camera, H());
   if (santa) santa.update(dt);
+  if (polarBear) polarBear.update(dt);
 
   flags.forEach(f => { f.time.value = t; });
   if (raising) {
