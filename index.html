@@ -49,6 +49,8 @@ import { mountChat } from './chat-ui.js';
 import { mountCommentMailbox } from './comment-mailbox.js?v=glass-mail';
 import { createQualityControl } from './quality.js';
 import { addStatsBuilding } from './stats-building.js';
+import { mountAnonymousBoard } from './anonymous-board.js';
+import { addAnonymousBoardObject } from './board-object.js';
 
 // DB 연결로 화면 렌더링을 기다리게 하지 않는다. 조작의 저장 연동은 로그인 UI 연결 후 진행한다.
 window.__iglooBackendStatus = villageBackend.status;
@@ -1177,6 +1179,34 @@ setBar(IDLE, [], 'hint');
 
 const ray = new THREE.Raycaster(), pointer = new THREE.Vector2(2, 2), hits = igloos.map(i => i.hit);
 let mode = 'map', hovered = null, mine = null, mx = 0, my = 0, raising = null;
+// 병관·성근 이글루 사이를 향한 배치 시안. 두 집 사이 정확한 좌표는 실제 화면에서 조정한다.
+// x를 줄이면 화면 왼쪽, z를 늘리면 전면(카메라 방향)으로 이동한다.
+const BOARD_POSITION = { x: -7, z: -5, rotation: 0 };
+const boardObject = addAnonymousBoardObject(THREE, scene, { ...BOARD_POSITION, heightAt });
+const anonymousBoard = mountAnonymousBoard(villageBackend, { getMember: () => auth.member });
+function closeVillageBoard() {
+  mode = 'map';
+  applyView();
+  bar.hidden = false;
+  count.hidden = false;
+  chat.setHidden(false);
+  setBar(mapHintText(), [], 'hint');
+  canvas.style.cursor = '';
+}
+function openVillageBoard() {
+  if (mode !== 'map') return;
+  mode = 'board';
+  ring.visible = false;
+  hovered = null;
+  canvas.style.cursor = '';
+  camPos.copy(boardObject.focusPosition());
+  camLook.copy(boardObject.focusTarget());
+  bar.hidden = true;
+  count.hidden = true;
+  chat.setHidden(true);
+  anonymousBoard.open(closeVillageBoard);
+}
+
 // 확대하면 자리 선택을 안내하고, 끝까지 축소했을 때 조작 설명으로 돌아간다.
 let choosingHint = false;
 const mapHintText = () => {
@@ -1277,6 +1307,14 @@ addEventListener('pointermove', e => {
 canvas.addEventListener('click', e => {
   if (dragged) return;
   pointer.set(e.clientX / W() * 2 - 1, -(e.clientY / H()) * 2 + 1);
+  // 마을 지도에서 나무 게시판을 누르면 익명 메모 UI를 연다.
+  if (mode === 'map') {
+    ray.setFromCamera(pointer, camera);
+    if (ray.intersectObjects(boardObject.targets, false).length) {
+      openVillageBoard();
+      return;
+    }
+  }
   if (mode === 'room' && room === lighthouseRoom) {
     if (lighthouseRoom.pickAction(pointer) === 'mail') openLighthouseMail();
     return;
@@ -1383,6 +1421,7 @@ async function syncVillage(raiseHome = null) {
     updateCount();
     updateProjectBeams();
     chat.setAccess({ user: auth.user, member: auth.member });
+    anonymousBoard.refreshAccess();
     commentMailbox.setAccess(auth.member, mine?.home ?? null);
   })();
   try {
@@ -1532,7 +1571,7 @@ function leave() {
   applyView();
   setBar(mapHintText(), [], 'hint');
 }
-addEventListener('keydown', e => { if (e.key === 'Escape' && mode === 'in') leave(); });
+addEventListener('keydown', e => { if (e.key === 'Escape' && mode === 'in') leave(); }); // 익명 게시판 Escape는 anonymous-board.js에서 처리
 
 const v = new THREE.Vector3();
 const clock = new THREE.Clock();
@@ -1579,6 +1618,11 @@ function frame() {
   camera.position.lerp(v.set(camPos.x + px, camPos.y + py, camPos.z), k);
   lookNow.lerp(camLook, k);
   camera.lookAt(lookNow);
+  if (mode === 'board') {
+    // 카메라가 게시판 전면에 도착한 다음 표면 UI를 화면에 투영한다.
+    const closeEnough = camera.position.distanceTo(boardObject.focusPosition()) < 3.5;
+    anonymousBoard.placeOnFace(boardObject, camera, W(), H(), closeEnough);
+  }
   mountainTitle.position.copy(camera.position).lerp(mountainTitleAnchor, TITLE_DEPTH);
   projectBeams.forEach(beam => {
     beam.visible = mode === 'map' || mode === 'in';

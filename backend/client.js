@@ -168,6 +168,27 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
       return unwrap(await api.rpc('record_visit'));
     },
 
+    // 공개 목록은 작성자 ID를 반환하지 않는다. 커서가 없으면 최신 메모부터 조회한다.
+    async listVillageBoardPosts(limit = 20, cursor = null) {
+      if (!Number.isInteger(limit) || limit < 1 || limit > 30) throw new Error('조회 개수를 확인해 주세요.');
+      const api = await ready();
+      return unwrap(await api.rpc('list_village_board_posts', {
+        p_limit: limit,
+        p_before_created_at: cursor?.created_at ?? null,
+        p_before_id: cursor?.id ?? null
+      }));
+    },
+    async createVillageBoardPost(content) {
+      const text = String(content ?? '').trim();
+      if (!text || text.length > 500) throw new Error('메모는 1~500자로 작성해 주세요.');
+      const { api } = await requireMember();
+      return unwrap(await api.rpc('create_village_board_post', {p_content: text}));
+    },
+    async deleteVillageBoardPost(id) {
+      if (!UUID.test(id)) throw new Error('삭제할 메모가 올바르지 않습니다.');
+      const { api } = await requireMember();
+      return unwrap(await api.rpc('delete_village_board_post', {p_id: id}));
+    },
     async getMemberVisitCounts() {
       const { api } = await requireMember();
       return unwrap(await api.rpc('get_member_visit_counts'));
