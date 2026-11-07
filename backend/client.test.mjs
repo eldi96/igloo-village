@@ -305,3 +305,103 @@ test('exterior light RPCs allow only warm and blue for verified students', async
  await assert.rejects(backend.setExteriorLight('pink'),/색상/);await backend.getExteriorLight();await backend.setExteriorLight('blue');
  assert.deepEqual(calls,[['get_exterior_light',undefined],['set_exterior_light',{p_color:'blue'}]]);
 });
+
+test('board moderator check uses the member RPC, needs an exact true, and propagates errors', async () => {
+  const member={id:'11111111-1111-4111-8111-111111111111',role:'student',approved:true};
+  let result=false, failure=null;
+  const calls=[];
+  const api={auth:{getUser:async()=>({data:{user:{id:member.id}}})},from(table){
+    if(table==='igloos')return {select:()=>({order:async()=>({data:homes})})};
+    if(table==='members')return {select:()=>({eq:()=>({maybeSingle:async()=>({data:member})})})};
+    throw Error('moderator roster must remain private');
+  },rpc:async(name,args)=>{calls.push([name,args]);return {data:result,error:failure};}};
+  const backend=createVillageBackend({config,loadSdk:async()=>({createClient:()=>api})});
+  assert.equal(await backend.canModerateVillageBoard(),false);
+  result='true';
+  assert.equal(await backend.canModerateVillageBoard(),false);
+  result=true;
+  assert.equal(await backend.canModerateVillageBoard(),true);
+  failure=new Error('moderator lookup failed');
+  await assert.rejects(backend.canModerateVillageBoard(),/moderator lookup failed/);
+  assert.deepEqual(calls,Array(4).fill(['can_moderate_village_board',undefined]));
+});
+
+function projectMock({ failUpdateColumns = false } = {}) {
+  const member = { id: '11111111-1111-4111-8111-111111111111', role: 'student', approved: true };
+  const ids = { a: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', b: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', c: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' };
+  const seen = [];
+  const created = [{ id: ids.a, igloo_id: 3, image_path: null, created_at: '2026-01-03T00:00:00Z' },
+                   { id: ids.b, igloo_id: 5, image_path: 'x.jpg', created_at: '2026-01-02T00:00:00Z', announced_at: null }];
+  const announcedRows = [{ id: ids.c, igloo_id: 7, image_path: null, created_at: '2025-12-01T00:00:00Z', announced_at: '2026-01-05T00:00:00Z', update_note: '새 화면' },
+                         { id: ids.a, igloo_id: 3, image_path: null, created_at: '2026-01-03T00:00:00Z', announced_at: '2026-01-04T00:00:00Z' }];
+  const comments = [{ project_id: ids.b, created_at: '2026-01-02T05:00:00Z' }, { project_id: ids.b, created_at: '2026-01-02T06:00:00Z' },
+                    { project_id: ids.c, created_at: '2025-12-02T00:00:00Z' }, { project_id: ids.c, created_at: '2026-01-06T00:00:00Z' }];
+  const api = {
+    auth: { getUser: async () => ({ data: { user: { id: member.id } } }) },
+    storage: { from: () => ({ createSignedUrl: async () => ({ data: { signedUrl: 'https://img' } }) }) },
+    from(table) {
+      if (table === 'igloos') return { select: () => ({ order: async () => ({ data: homes }) }) };
+      if (table === 'members') return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: member }) }) }) };
+      if (table === 'projects') return { select: columns => {
+        const hasUpdates = columns.includes('announced_at'), chain = { announced: false };
+        chain.not = () => { chain.announced = true; return chain; };
+        chain.order = () => chain;
+        chain.limit = async () => {
+          seen.push([hasUpdates ? 'with-updates' : 'plain', chain.announced ? 'announced' : 'created']);
+          if (hasUpdates && failUpdateColumns) return { data: null, error: new Error('column announced_at does not exist') };
+          return { data: chain.announced ? announcedRows : created.map(row => ({ ...row })), error: null };
+        };
+        return chain;
+      } };
+      if (table === 'project_comments') return { select: () => ({ in: () => ({ is: () => ({ limit: async () => ({ data: comments }) }) }) }) };
+      throw Error('unexpected table ' + table);
+    }, rpc: async (name, args) => { seen.push([name, args]); return { data: '2026-01-07T00:00:00Z', error: null }; } };
+  return { api, ids, seen, backend: createVillageBackend({ config, loadSdk: async () => ({ createClient: () => api }) }) };
+}
+
+test('recent projects put announced updates first and count only feedback made after the last update', async () => {
+  const { backend, ids } = projectMock();
+  await assert.rejects(backend.listRecentProjects(0), /개수/);
+  await assert.rejects(backend.listRecentProjects(21), /개수/);
+  const rows = await backend.listRecentProjects(8);
+  // c는 오래된 프로젝트지만 가장 최근에 업데이트를 알렸다. a는 알린 뒤(01-04)가 아니라 등록(01-03) 기준이 아니라 알림 기준으로 정렬된다.
+  assert.deepEqual(rows.map(row => row.id), [ids.c, ids.a, ids.b]);
+  assert.deepEqual(rows.map(row => [row.comment_count, row.fresh_comment_count]), [[2, 1], [0, 0], [2, 2]]);
+  assert.equal(rows.find(row => row.id === ids.b).image_url, 'https://img');
+  assert.equal(rows[0].update_note, '새 화면');
+});
+
+test('recent projects fall back to creation order while the update columns are not in the database yet', async () => {
+  const { backend, ids, seen } = projectMock({ failUpdateColumns: true });
+  const rows = await backend.listRecentProjects(8);
+  assert.deepEqual(rows.map(row => row.id), [ids.a, ids.b]);
+  assert.deepEqual(rows.map(row => row.fresh_comment_count), [0, 2]);
+  assert.deepEqual(seen, [['with-updates', 'created'], ['plain', 'created']]);
+});
+
+test('announcing a project update validates input before connecting and sends a trimmed optional note', async () => {
+  const { backend, ids, seen } = projectMock();
+  await assert.rejects(backend.announceProjectUpdate('bad'), /프로젝트/);
+  await assert.rejects(backend.announceProjectUpdate(ids.a, '가'.repeat(121)), /120자/);
+  await backend.announceProjectUpdate(ids.a, '  새 화면  ');
+  await backend.announceProjectUpdate(ids.a);
+  assert.deepEqual(seen, [['announce_project_update', { p_id: ids.a, p_note: '새 화면' }], ['announce_project_update', { p_id: ids.a, p_note: null }]]);
+});
+
+test('improvement ideas validate input before connecting and use the member RPCs', async () => {
+  const member={id:'11111111-1111-4111-8111-111111111111',role:'student',approved:true};
+  const id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', calls=[];
+  const api={auth:{getUser:async()=>({data:{user:{id:member.id}}})},from(table){
+    if(table==='igloos')return {select:()=>({order:async()=>({data:homes})})};
+    if(table==='members')return {select:()=>({eq:()=>({maybeSingle:async()=>({data:member})})})};
+    throw Error('unexpected table '+table);
+  },rpc:async(name,args)=>{calls.push([name,args]);return {data:name==='set_improvement_idea_status'?true:name==='list_improvement_ideas'?[]:args?.p_value,error:null};}};
+  const backend=createVillageBackend({config,loadSdk:async()=>({createClient:()=>api})});
+  await assert.rejects(backend.reactImprovementIdea('bad',1),/의견/);
+  await assert.rejects(backend.reactImprovementIdea(id,2),/반응/);
+  await assert.rejects(backend.setImprovementIdeaStatus(id,'bogus'),/상태/);
+  assert.deepEqual(await backend.listImprovementIdeas(),[]);
+  assert.equal(await backend.reactImprovementIdea(id,-1),-1);
+  assert.equal(await backend.setImprovementIdeaStatus(id,'voting'),true);
+  assert.deepEqual(calls,[['list_improvement_ideas',undefined],['react_improvement_idea',{p_id:id,p_value:-1}],['set_improvement_idea_status',{p_id:id,p_status:'voting'}]]);
+});

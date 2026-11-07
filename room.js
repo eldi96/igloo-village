@@ -4,8 +4,13 @@ import * as THREE from 'three';
 import { mountPrivacyPanel } from './privacy-panel.js';
 import { mountCardThemes } from './card-themes.js?v=compact-unlock-notice';
 import { mountExteriorLight } from './exterior-light.js?v=lavender';
-import { mountProjectFeedback } from './project-feedback.js?v=comment-actions';
+import { mountProjectFeedback } from './project-feedback.js?v=react-row-up';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
+// assets/igloo-* 파일을 다시 구우면 올려서 브라우저 캐시를 새로 받게 한다.
+const BAKE_VERSION = 15;
 
 const STYLE = `
   .room-ui { font: 400 14px/1.55 "Segoe UI", "Malgun Gothic", system-ui, sans-serif; color: #fff3e4; }
@@ -25,9 +30,9 @@ const STYLE = `
   @media (pointer: coarse) { .room-controls-desktop { display:none; } .room-controls-touch { display:block; } .room-controls { width:auto; max-width:210px; padding:12px 14px; } }
   @media (max-width: 720px) { .room-controls { left:12px; bottom:88px; } }
   @media (max-height: 560px) { .room-controls { bottom:66px; padding:10px 12px; } .room-controls h2 { margin-bottom:5px; } .room-control-row { margin-top:6px; } }
-  .room-label { position: fixed; z-index: 3; transform: translate(-50%, -100%); padding: 4px 12px; border: 1px solid rgba(255,226,190,.42); border-radius: 13px; background: rgba(38,18,10,.74); color: #fff3e4; font: 500 12px/1.5 "Segoe UI", "Malgun Gothic", system-ui, sans-serif; white-space: nowrap; pointer-events: none; }
-  .room-label[data-empty="true"] { background: rgba(255,232,205,.2); color: #fff3e4; }
-  .room-label[data-active="true"] { border-color: #ffe9cf; background: #fff0dd; color: #3a1a0a; }
+  .room-label { position: fixed; z-index: 3; transform: translate(-50%, -100%); padding: 5px 14px; border: 1px solid rgba(255,255,255,.38); border-radius: 999px; background: rgba(255,255,255,.14); -webkit-backdrop-filter: blur(14px) saturate(140%); backdrop-filter: blur(14px) saturate(140%); box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 6px 18px rgba(11,19,43,.22); color: #fff; text-shadow: 0 1px 2px rgba(11,19,43,.35); font: 600 12px/1.5 "Segoe UI", "Malgun Gothic", system-ui, sans-serif; white-space: nowrap; pointer-events: none; }
+  .room-label[data-empty="true"] { background: rgba(255,255,255,.07); color: rgba(255,255,255,.82); border-style: dashed; }
+  .room-label[data-active="true"] { border-color: rgba(255,255,255,.7); background: rgba(255,255,255,.3); }
   .room-veil { position: fixed; z-index: 6; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(18,12,10,.22); }
   .room-form { box-sizing: border-box; width: min(940px, 100%); max-height: calc(100dvh - 40px); overflow-y: auto; padding: 24px; border: 1px solid rgba(255,245,230,.38); border-radius: 26px; background: linear-gradient(135deg, rgba(255,239,219,.2), rgba(38,24,19,.62)); backdrop-filter: blur(18px) saturate(125%); -webkit-backdrop-filter: blur(18px) saturate(125%); box-shadow: 0 24px 72px rgba(16,9,6,.32), inset 0 1px rgba(255,255,255,.45), inset 0 -1px rgba(255,255,255,.06); scrollbar-width: thin; scrollbar-color: rgba(255,239,219,.3) transparent; transition: opacity 160ms cubic-bezier(.23,1,.32,1), transform 160ms cubic-bezier(.23,1,.32,1); }
   @starting-style { .room-form { opacity: 0; transform: translateY(6px) scale(.98); } }
@@ -39,6 +44,12 @@ const STYLE = `
   .room-form input:focus { outline: 2px solid #ffe9cf; outline-offset: 1px; }
   .room-form textarea { box-sizing: border-box; width: 100%; min-height: 90px; margin-top: 8px; padding: 12px; resize: vertical; border: 1px solid rgba(255,226,190,.26); border-radius: 10px; background: rgba(24,16,13,.26); box-shadow: inset 0 1px 3px rgba(0,0,0,.08); color: #fff6ea; font: inherit; }
   .room-form textarea:focus { outline: 2px solid #ffe9cf; outline-offset: 1px; }
+  .room-form .room-announce[hidden], .room-form .room-note[hidden] { display: none; }
+  .room-form .room-check { display: flex; align-items: center; gap: 10px; margin-top: 18px; color: #f3dcc2; font-size: 13px; cursor: pointer; }
+  .room-form .room-check input { display: inline-block; flex: none; width: 18px; height: 18px; margin: 0; accent-color: #ffe9cf; cursor: pointer; }
+  .room-form .room-note:not([hidden]) { animation: room-note-in .24s cubic-bezier(.23, 1, .32, 1); }
+  @keyframes room-note-in { from { opacity: 0; transform: translateY(-6px); } }
+  @media (prefers-reduced-motion: reduce) { .room-form .room-note { animation: none !important; } }
   .room-preview { display: block; width: 100%; max-height: 180px; object-fit: contain; margin-top: 10px; border-radius: 10px; }
   .room-shot img { display: block; width: 100%; height: 100%; object-fit: contain; }
   .room-shot p { color: #704c38; text-align: center; padding: 32px 12px; }
@@ -81,7 +92,7 @@ const STYLE = `
   .room-browser-content img[data-landscape="true"] { object-fit: cover; }
   .room-browser-content p { margin: 0; color: #fff0df; font-size: 12px; }
 
-  .room-author { display: flex; align-items: center; gap: 10px; flex: none; margin-top: 16px; color: #f0d8c2; font-size: 13px; }
+  .room-author { display: flex; align-items: center; gap: 10px; flex: none; margin-top: 8px; color: #f0d8c2; font-size: 13px; }
   .room-avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #d67030; color: #fff6ea; font-weight: 600; }
   .room-card h2 { flex: none; margin: 12px 0 0; font-size: 25px; font-weight: 600; letter-spacing: -.02em; line-height: 1.3; overflow-wrap: anywhere; }
   .room-link { flex: none; margin-top: 4px; color: #e2c5ab; font-size: 13px; overflow-wrap: anywhere; }
@@ -114,11 +125,14 @@ const STYLE = `
   .feedback-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .feedback-head h3 { margin: 0; font-size: 16px; }
   .feedback-reactions { display: flex; gap: 8px; }
-  .feedback-reactions button { display: flex; align-items: center; gap: 8px; padding: 8px 13px; border: 1px solid rgba(255,255,255,.24); border-radius: 999px; background: rgba(255,255,255,.07); color: #fff3e4; font: inherit; cursor: pointer; }
-  .feedback-reactions button { transition: background-color 120ms ease, border-color 120ms ease; }
-  @media (hover: hover) { .feedback-reactions button:hover:not(:disabled) { background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.5); } }
+  .feedback-reactions button { display: flex; align-items: center; gap: 6px; padding: 6px 12px 6px 9px; border: 1px solid rgba(255,255,255,.26); border-radius: 999px; background: rgba(255,255,255,.1); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); color: #fff; font: inherit; font-variant-numeric: tabular-nums; cursor: pointer; }
+  .feedback-reactions button { transition: background-color 140ms ease-out, border-color 140ms ease-out, transform 140ms cubic-bezier(.23,1,.32,1); }
+  .feedback-reactions .reaction-icon { width: 18px; height: 18px; flex: none; filter: drop-shadow(0 1px 1.5px rgba(11,19,43,.28)); transition: transform 180ms cubic-bezier(.23,1,.32,1); }
+  @media (hover: hover) { .feedback-reactions button:hover:not(:disabled) { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.45); } }
+  .feedback-reactions button:active:not(:disabled) { transform: scale(.96); }
   .feedback-reactions button[aria-busy=true] { cursor: progress; }
-  .feedback-reactions button[aria-pressed=true] { border-color: rgba(255,222,179,.8); background: rgba(255,222,179,.22); }
+  .feedback-reactions button[aria-pressed=true] { border-color: rgba(255,255,255,.62); background: rgba(255,255,255,.24); }
+  .feedback-reactions button[aria-pressed=true] .reaction-icon { transform: scale(1.1); }
   .feedback-reactions button:disabled { opacity: .5; cursor: default; }
   .room-author [data-owner] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .room-author .room-avatar { flex: none; }
@@ -186,9 +200,21 @@ const STYLE = `
   @media (prefers-reduced-motion: reduce) { .room-form, .room-card { transition-property: opacity; } @starting-style { .room-form, .room-card { transform: none; } } .room-btn:active:not(:disabled), .room-icon:active:not(:disabled) { transform: none; } }
 `;
 
-const DOME_R = 12;
-const WINDOW_PHI = 2.45;
+const DOME_R = 9;
 const ROOM_YAW = 3.5;
+// 들어오면 보이는 정면 각도(blender/igloo_room.py와 같은 값).
+const FRONT_A = ROOM_YAW - Math.PI;
+// 창문은 정면에서 오른쪽으로 옮겼다.
+const WIN_A = FRONT_A + 1.05;
+const WINDOW_PHI = Math.PI - WIN_A;
+// 반타원 아치 창: 창 아래 가운데의 높이각, 반폭, 높이(blender/igloo_room.py와 같게)
+const ARCH_BASE_E = 0.17, ARCH_A = 1.6, ARCH_B = 2.4;
+// 왼쪽 벽 앞 얼음 받침대(Blender에서 구움): 각도, 중심 거리, 가로, 깊이, 높이(blender/igloo_room.py와 같게)
+// 시작 시점 뒤쪽 입구(나무 문, 얼음 블록 아치가 방 안으로 약 1.5m 튀어나옴): 각도, 반폭+아치 두께, 높이(blender/igloo_room.py와 같게)
+const ENTRY = { a: 3.6, half: 2.0 + 0.6, h: 4.2 + 0.6 };
+const BENCH = { a: FRONT_A - 0.66, r: DOME_R - 2.3, w: 7.2, d: 1.7, h: 1.3 };
+// 선물상자 3개는 지금 숨겨 둔다. 나중에 다시 쓰려면 true로 바꾼다.
+const SHOW_BOXES = false;
 // 왼쪽에서 뒤쪽으로 이어지는 벽을 따라 같은 간격으로 놓는다.
 const BOX_RING = DOME_R - 1.4;
 const BOX_SHAPES = [
@@ -207,6 +233,7 @@ const boxAt = box => ({
   // 뒷면은 벽의 접선과 나란히, 앞면은 방 중심을 향한다.
   yaw: -box.angle - Math.PI / 2
 });
+const RUG_R = 2.6;
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 function makeCanvas(w, h) {
@@ -237,41 +264,6 @@ function drawWindowLight(g, place, color) {
     g.closePath();
     g.fill();
   }
-}
-
-function makeDomeTexture() {
-  const W = 4096, H = 1024, ROWS = 7;
-  const [canvas, g] = makeCanvas(W, H);
-  for (let r = 0; r < ROWS; r++) {
-    const y1 = H - r / ROWS * H, y0 = H - (r + 1) / ROWS * H;
-    const phi = (r + 0.5) / ROWS * Math.PI / 2;
-    const n = Math.max(5, Math.round(Math.PI * 2 * DOME_R * Math.cos(phi) / 3.1));
-    for (let i = -1; i < n; i++) {
-      const x = (i + (r % 2) * 0.5) / n * W;
-      const tone = Math.abs(Math.sin(i * 7.13 + r * 3.71));
-      g.fillStyle = `hsl(${204 + tone * 7}, ${29 + tone * 5}%, ${45 + tone * 6 + (ROWS - r) * -0.8}%)`;
-      g.fillRect(x, y0, W / n + 1, y1 - y0);
-      g.fillStyle = 'rgba(26,54,76,.36)';
-      g.fillRect(x - 3, y0, 6, y1 - y0);
-    }
-    g.fillStyle = 'rgba(26,54,76,.4)';
-    g.fillRect(0, y0 - 3, W, 6);
-  }
-  // 아래쪽은 바닥에서 튄 빛으로 밝고, 꼭대기는 어둡다.
-  const shade = g.createLinearGradient(0, 0, 0, H);
-  shade.addColorStop(0, 'rgba(12,31,55,.48)');
-  shade.addColorStop(0.55, 'rgba(24,52,78,.06)');
-  shade.addColorStop(1, 'rgba(172,218,241,.18)');
-  g.fillStyle = shade;
-  g.fillRect(0, 0, W, H);
-  // 창 맞은편 벽에 떨어지는 비스듬한 빛.
-  const center = ((WINDOW_PHI + Math.PI) % (Math.PI * 2)) / (Math.PI * 2) * W;
-  g.save();
-  g.filter = 'blur(10px)';
-  g.globalCompositeOperation = 'lighter';
-  drawWindowLight(g, (u, v) => [center - 340 + u * 620 + v * 240, H * 0.4 + v * H * 0.5 + u * 70], 'rgba(154,208,244,.15)');
-  g.restore();
-  return texture(canvas);
 }
 
 function makeFloorTexture() {
@@ -337,30 +329,311 @@ function makeFloorTexture() {
     g.fill();
   }
   g.restore();
+  // 방 가운데 둥근 털 러그. 가장자리 그림자 → 바탕 → 털 결 순서로 그린다.
+  const rr = RUG_R / (2 * DOME_R) * S;
+  g.save();
+  g.filter = 'blur(10px)';
+  g.fillStyle = 'rgba(18,40,60,.45)';
+  g.beginPath(); g.arc(cx, cz, rr + 6, 0, Math.PI * 2); g.fill();
+  g.restore();
+  const rug = g.createRadialGradient(cx, cz, 0, cx, cz, rr);
+  rug.addColorStop(0, '#e9e3d7');
+  rug.addColorStop(0.8, '#d9d1c2');
+  rug.addColorStop(1, '#bdb4a5');
+  g.fillStyle = rug;
+  g.beginPath(); g.arc(cx, cz, rr, 0, Math.PI * 2); g.fill();
+  let seed = 11;
+  const rand = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+  g.lineCap = 'round';
+  for (let i = 0; i < 5200; i++) {
+    const a = rand() * Math.PI * 2, d = Math.sqrt(rand()) * (rr + 8);
+    const x = cx + Math.cos(a) * d, y = cz + Math.sin(a) * d, len = 5 + rand() * 9, tilt = a + (rand() - 0.5) * 1.4;
+    g.strokeStyle = rand() < 0.5 ? `rgba(255,252,244,${0.25 + rand() * 0.3})` : `rgba(150,138,120,${0.12 + rand() * 0.15})`;
+    g.lineWidth = 1 + rand() * 1.5;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(tilt) * len, y + Math.sin(tilt) * len); g.stroke();
+  }
+  g.strokeStyle = 'rgba(160,148,130,.35)';
+  g.lineWidth = 3;
+  g.beginPath(); g.arc(cx, cz, rr * 0.72, 0, Math.PI * 2); g.stroke();
   return texture(canvas);
 }
 
-// 돔의 창 영역은 면을 만들지 않아 실제로 밖을 볼 수 있다.
-function makeOpenDome() {
-  const phis = [...Array.from({ length: 97 }, (_, i) => i / 96 * Math.PI * 2), WINDOW_PHI - 0.24, WINDOW_PHI + 0.24].sort((a,b) => a-b);
-  const top = Math.PI / 2 - 0.62, bottom = top + 0.5;
-  const thetas = [...Array.from({ length: 33 }, (_, i) => i / 32 * Math.PI / 2), top, bottom].sort((a,b) => a-b);
-  const positions = [], uvs = [], indices = [];
-  for (const theta of thetas) for (const phi of phis) {
-    positions.push(-DOME_R * Math.cos(phi) * Math.sin(theta), DOME_R * Math.cos(theta), DOME_R * Math.sin(phi) * Math.sin(theta));
-    uvs.push(1 - phi / (Math.PI * 2), 1 - theta / Math.PI);
-  }
-  for (let y=0; y<thetas.length-1; y++) for (let x=0; x<phis.length-1; x++) {
-    const phi = (phis[x]+phis[x+1])/2, theta = (thetas[y]+thetas[y+1])/2;
-    if (phi > WINDOW_PHI-0.24 && phi < WINDOW_PHI+0.24 && theta > top && theta < bottom) continue;
-    const a=y*phis.length+x, b=a+phis.length;
-    indices.push(a,b,a+1,a+1,b,b+1);
+// 돔을 실제 입체 얼음 블록으로 쌓는다. 블록 가장자리를 바깥으로 밀어 둥근 모서리와 이음 홈을 만들고,
+// 창이 있는 줄은 창 양옆에서 블록을 나눠 창 구멍을 깔끔하게 남긴다.
+function makeBlockDome() {
+  const WIN_A = Math.PI - WINDOW_PHI, WIN_W = 0.24, WIN_LOW = 0.12, WIN_HIGH = 0.62;
+  const ROWS = [0, 0.12, 0.37, 0.62, 0.9, 1.17, 1.4, Math.PI / 2];
+  const BEVEL = 0.32, SEG_U = 5, SEG_V = 4;
+  let seed = 3;
+  const rand = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+  const positions = [], colors = [];
+  const at = (a, e, r) => [r * Math.cos(e) * Math.cos(a), r * Math.sin(e), r * Math.cos(e) * Math.sin(a)];
+  const block = (a0, a1, e0, e1) => {
+    const em = (e0 + e1) / 2, wlen = (a1 - a0) * DOME_R * Math.max(0.05, Math.cos(em)), hlen = (e1 - e0) * DOME_R;
+    const bulge = 0.04 + rand() * 0.06, tone = rand(), tint = rand();
+    const grid = [];
+    for (let j = 0; j <= SEG_V; j++) for (let i = 0; i <= SEG_U; i++) {
+      const u = i / SEG_U, v = j / SEG_V;
+      const d = Math.min(u * wlen, (1 - u) * wlen, v * hlen, (1 - v) * hlen);
+      const edge = 1 - Math.min(d / BEVEL, 1);
+      const r = DOME_R + BEVEL * edge - bulge * Math.sin(u * Math.PI) * Math.sin(v * Math.PI) + (rand() - 0.5) * 0.06;
+      const e = e0 + (e1 - e0) * v;
+      // 푸른 얼음 색. 위쪽은 조금 어둡고, 블록마다 밝기와 푸른 정도가 다르며, 홈은 어둡다. 따뜻함은 천장 조명이 맡는다.
+      const light = (0.84 + tone * 0.1 - (e / (Math.PI / 2)) * 0.14) * (1 - 0.32 * edge);
+      grid.push({ p: at(a0 + (a1 - a0) * u, e, r), c: [0.72 * light, (0.85 + tint * 0.04) * light, (0.96 + tint * 0.03) * light] });
+    }
+    const idx = (i, j) => grid[j * (SEG_U + 1) + i];
+    for (let j = 0; j < SEG_V; j++) for (let i = 0; i < SEG_U; i++) {
+      for (const q of [idx(i, j), idx(i, j + 1), idx(i + 1, j), idx(i + 1, j), idx(i, j + 1), idx(i + 1, j + 1)]) {
+        positions.push(...q.p); colors.push(...q.c);
+      }
+    }
+  };
+  for (let r = 0; r < ROWS.length - 1; r++) {
+    const e0 = ROWS[r], e1 = ROWS[r + 1], em = (e0 + e1) / 2;
+    const n = Math.max(4, Math.round(Math.PI * 2 * DOME_R * Math.cos(em) / 3.2));
+    const shift = (r % 2) * 0.5;
+    if (e0 >= WIN_LOW - 1e-6 && e1 <= WIN_HIGH + 1e-6) {
+      // 창 오른쪽 끝에서 시작해 창 왼쪽 끝까지 남은 호를 블록으로 나눈다.
+      const start = WIN_A + WIN_W, span = Math.PI * 2 - WIN_W * 2, m = Math.max(3, Math.round(n * span / (Math.PI * 2)));
+      for (let i = 0; i < m; i++) block(start + span * i / m, start + span * (i + 1) / m, e0, e1);
+    } else {
+      for (let i = 0; i < n; i++) block((i + shift) / n * Math.PI * 2, (i + 1 + shift) / n * Math.PI * 2, e0, e1);
+    }
   }
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
-  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs,2));
-  geometry.setIndex(indices);
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.computeVertexNormals();
   return geometry;
+}
+
+// 받침대 위 프로젝트 수정 하나: 각진 반투명 얼음 수정 안에 프로젝트 화면 패널이 떠 있고, 받침대에 빛나는 고리가 있다.
+// offset은 받침대 가운데에서 벽을 따라 옮긴 거리. 프로젝트 슬롯 하나에 수정 하나가 대응한다.
+const CRYSTAL_HIT = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+function addCrystal(scene, offset = 0, seedStart = 11) {
+  const group = new THREE.Group();
+  const bx = Math.cos(BENCH.a) * BENCH.r - Math.sin(BENCH.a) * offset, bz = Math.sin(BENCH.a) * BENCH.r + Math.cos(BENCH.a) * offset;
+  group.position.set(bx, BENCH.h, bz);
+  group.lookAt(0, BENCH.h, 0);   // 패널이 방 가운데를 본다
+  group.scale.setScalar(0.72);
+  scene.add(group);
+  let seed = seedStart;
+  const rand = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+  // 수정 재질: 면마다 밝기가 다르고, 가장자리로 갈수록 밝게 빛나는 반투명 얼음
+  const crystalMaterial = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.NormalBlending,
+    uniforms: { glow: { value: 1 }, focus: { value: 0 } },
+    vertexShader: 'varying vec3 vPos;void main(){vec4 w=modelMatrix*vec4(position,1.);vPos=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}',
+    fragmentShader: `varying vec3 vPos;uniform float glow;uniform float focus;
+      void main(){vec3 nc=cross(dFdx(vPos),dFdy(vPos));vec3 n=dot(nc,nc)>1e-12?normalize(nc):vec3(0.,1.,0.);vec3 v=normalize(cameraPosition-vPos);
+      float facing=abs(dot(n,v));float rim=pow(1.-facing,2.2);
+      float facet=.55+.45*abs(dot(n,normalize(vec3(.3,.8,.5))));
+      vec3 c=mix(vec3(.55,.8,1.),vec3(.92,.98,1.),rim)*facet;
+      gl_FragColor=clamp(vec4(c*(1.+rim*.6*glow+focus*.5),.18+rim*.55+focus*.12),0.,4.);}`
+  });
+  // 볼록 껍질로 각진 수정 조각을 만든다(아래 뾰족, 가운데 육각 기둥, 위 뾰족).
+  const crystal = (height, radius, lean) => {
+    const pts = [new THREE.Vector3(0, 0, 0)];
+    for (const [y, r] of [[height * 0.2, radius], [height * 0.68, radius * 1.05]]) {
+      for (let i = 0; i < 6; i++) {
+        const a = i / 6 * Math.PI * 2 + rand() * 0.35;
+        pts.push(new THREE.Vector3(Math.cos(a) * r * (0.85 + rand() * 0.3), y + (rand() - 0.5) * 0.08, Math.sin(a) * r * (0.85 + rand() * 0.3)));
+      }
+    }
+    pts.push(new THREE.Vector3(lean * 0.1, height, 0));
+    const mesh = new THREE.Mesh(new ConvexGeometry(pts), crystalMaterial);
+    mesh.rotation.z = lean;
+    return mesh;
+  };
+  const cluster = new THREE.Group();
+  cluster.position.y = 0.08;
+  group.add(cluster);
+  cluster.add(crystal(1.9, 0.48, 0));
+  for (const [x, z, h, r, lean] of [[-0.42, 0.05, 1.05, 0.26, 0.45], [0.45, -0.05, 1.2, 0.28, -0.42], [-0.15, -0.3, 0.75, 0.2, 0.25], [0.2, 0.32, 0.7, 0.18, -0.3]]) {
+    const c = crystal(h, r, lean);
+    c.position.set(x, 0, z);
+    cluster.add(c);
+  }
+  // 안쪽에 떠 있는 웹 화면 패널(예시 그림: 브라우저 창과 작은 카드 3개)
+  const [panelCanvas, g] = makeCanvas(512, 512);
+  const glass = (x, y, w, h, r) => {
+    g.beginPath(); g.roundRect(x, y, w, h, r);
+    g.fillStyle = 'rgba(170,215,255,.28)'; g.fill();
+    g.lineWidth = 5; g.strokeStyle = 'rgba(235,248,255,.95)'; g.stroke();
+  };
+  glass(56, 70, 400, 250, 22);
+  g.fillStyle = 'rgba(235,248,255,.95)';
+  for (const x of [88, 112, 136]) { g.beginPath(); g.arc(x, 100, 8, 0, Math.PI * 2); g.fill(); }
+  g.beginPath(); g.moveTo(80, 300); g.lineTo(190, 190); g.lineTo(260, 250); g.lineTo(330, 170); g.lineTo(432, 300); g.closePath();
+  g.fillStyle = 'rgba(225,242,255,.55)'; g.fill();
+  g.beginPath(); g.arc(150, 170, 20, 0, Math.PI * 2); g.fillStyle = 'rgba(240,250,255,.9)'; g.fill();
+  [[56, 350], [196, 350], [336, 350]].forEach(([x, y], i) => {
+    glass(x, y, 120, 110, 16);
+    g.strokeStyle = 'rgba(240,250,255,.95)'; g.lineWidth = 5; g.beginPath();
+    if (i === 0) { g.rect(x + 38, y + 30, 44, 44); g.moveTo(x + 38, y + 30); g.lineTo(x + 52, y + 18); g.lineTo(x + 96, y + 18); g.lineTo(x + 82, y + 30); g.moveTo(x + 96, y + 18); g.lineTo(x + 96, y + 62); g.lineTo(x + 82, y + 74); }
+    else if (i === 1) { g.moveTo(x + 20, y + 86); g.lineTo(x + 52, y + 46); g.lineTo(x + 72, y + 66); g.lineTo(x + 86, y + 52); g.lineTo(x + 102, y + 86); }
+    else { g.arc(x + 82, y + 38, 12, 0, Math.PI * 2); g.moveTo(x + 18, y + 84); g.quadraticCurveTo(x + 60, y + 50, x + 102, y + 80); }
+    g.stroke();
+  });
+  const panelMaterial = new THREE.MeshBasicMaterial({ map: texture(panelCanvas), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+  const panel = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.95), panelMaterial);
+  panel.position.set(0, 1.0, 0.05);
+  group.add(panel);
+  // 받침대 위 빛나는 고리와 바닥 번짐
+  const [glowCanvas, gg] = makeCanvas(128, 128);
+  const radial = gg.createRadialGradient(64, 64, 0, 64, 64, 64);
+  radial.addColorStop(0, 'rgba(140,210,255,.7)'); radial.addColorStop(0.5, 'rgba(110,190,255,.22)'); radial.addColorStop(1, 'rgba(100,180,255,0)');
+  gg.fillStyle = radial; gg.fillRect(0, 0, 128, 128);
+  const glowMap = texture(glowCanvas);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.7, 64), new THREE.MeshBasicMaterial({ color: 0x9fdcff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.012;
+  group.add(ring);
+  const pool = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4), new THREE.MeshBasicMaterial({ map: glowMap, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+  pool.rotation.x = -Math.PI / 2; pool.position.y = 0.01;
+  group.add(pool);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowMap, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, opacity: 0.55 }));
+  halo.position.y = 1.0; halo.scale.set(3, 3, 1);
+  group.add(halo);
+  // 위로 떠오르는 작은 반짝임
+  const SPARKS = 36, base = [], sparkPos = new Float32Array(SPARKS * 3);
+  for (let i = 0; i < SPARKS; i++) base.push([(rand() - 0.5) * 1.4, (rand() - 0.5) * 1.4, rand(), 0.12 + rand() * 0.15]);
+  const sparkGeometry = new THREE.BufferGeometry();
+  sparkGeometry.setAttribute('position', new THREE.BufferAttribute(sparkPos, 3));
+  group.add(new THREE.Points(sparkGeometry, new THREE.PointsMaterial({ color: 0xd8f0ff, size: 0.045, transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false })));
+  // 누르기 판정용 보이지 않는 상자
+  const hit = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.4, 1.6), CRYSTAL_HIT);
+  hit.position.y = 1.1;
+  group.add(hit);
+  group.updateMatrixWorld(true);
+  const anchor = group.localToWorld(new THREE.Vector3(0, 2.25, 0));
+  let focus = 0;
+  const update = (t, still) => {
+    const s = still ? 0 : t;
+    crystalMaterial.uniforms.focus.value = focus;
+    cluster.rotation.y = s * 0.15;
+    cluster.position.y = 0.08 + Math.sin(s * 1.2) * 0.04;
+    panel.position.y = 1.0 + Math.sin(s * 1.2 + 0.6) * 0.05;
+    const pulse = 0.85 + Math.sin(s * 2.1) * 0.15;
+    crystalMaterial.uniforms.glow.value = pulse;
+    ring.material.opacity = 0.55 + pulse * 0.35;
+    halo.material.opacity = 0.4 * pulse;
+    for (let i = 0; i < SPARKS; i++) {
+      const [x, z, offset, speed] = base[i];
+      const life = still ? offset : (offset + t * speed) % 1;
+      sparkPos[i * 3] = x * (1 - life * 0.5); sparkPos[i * 3 + 1] = 0.2 + life * 2.2; sparkPos[i * 3 + 2] = z * (1 - life * 0.5);
+    }
+    sparkGeometry.attributes.position.needsUpdate = true;
+  };
+  return { group, hit, anchor, update, setFocus: v => { focus = v; } };
+}
+
+// 천장 가운데 매달린 조명. 색은 '조명 변경'(프로젝트 2개로 해금) 설정을 따른다: 기본 은은한 주황, 라벤더 보라.
+// 구운 벽·바닥 밝기. 1이면 구운 그대로, 낮출수록 방이 은은하게 어두워져 천장 조명과 수정이 돋보인다(다시 굽지 않아도 됨).
+const ROOM_SHADE = new THREE.Color(0.52, 0.53, 0.6);
+const LAMP_COLORS = { warm: 0xff9440, blue: 0xb184ff };
+const LAMP_Y = 7.4;
+// 조명 색 번짐 막의 반지름. 카메라는 이 막보다 늘 안쪽에 있어야 색 경계가 보이지 않는다(moveCamera에서 막음).
+const WASH_R = DOME_R - 0.05;
+function addCeilingLamp(scene) {
+  const group = new THREE.Group();
+  group.position.y = LAMP_Y;
+  scene.add(group);
+  const color = new THREE.Color(LAMP_COLORS.warm), target = color.clone();
+  const metal = new THREE.MeshStandardMaterial({ color: 0x2a2c33, metalness: 0.7, roughness: 0.45, flatShading: true });
+  // 천장에서 내려오는 줄과 덮개
+  const rodLength = DOME_R - 0.1 - LAMP_Y - 0.55;
+  const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, rodLength, 6), metal);
+  rod.position.y = 0.55 + rodLength / 2;
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.2, 6), metal);
+  cap.position.y = 0.52;
+  group.add(rod, cap);
+  // 각진 얼음 구슬 껍질(가장자리가 빛나는 반투명)과 안쪽 빛 덩어리
+  const shellMaterial = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    uniforms: { tint: { value: color } },
+    vertexShader: 'varying vec3 vPos;void main(){vec4 w=modelMatrix*vec4(position,1.);vPos=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}',
+    fragmentShader: `varying vec3 vPos;uniform vec3 tint;
+      void main(){vec3 nc=cross(dFdx(vPos),dFdy(vPos));vec3 n=dot(nc,nc)>1e-12?normalize(nc):vec3(0.,1.,0.);vec3 v=normalize(cameraPosition-vPos);
+      float rim=pow(1.-abs(dot(n,v)),2.);float facet=.6+.4*abs(dot(n,normalize(vec3(.3,.8,.5))));
+      vec3 c=mix(tint*1.15,vec3(1.),.18+rim*.35)*facet;gl_FragColor=clamp(vec4(c,.32+rim*.5),0.,4.);}`
+  });
+  const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 0), shellMaterial);
+  const coreMaterial = new THREE.MeshBasicMaterial({ color, toneMapped: false });
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.2, 1), coreMaterial);
+  group.add(shell, core);
+  // 둥근 빛 번짐
+  const [glowCanvas, g] = makeCanvas(128, 128);
+  const radial = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  radial.addColorStop(0, 'rgba(255,255,255,.8)'); radial.addColorStop(0.3, 'rgba(255,255,255,.25)'); radial.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = radial; g.fillRect(0, 0, 128, 128);
+  const glowMap = texture(glowCanvas);
+  const haloMaterial = new THREE.SpriteMaterial({ map: glowMap, color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, opacity: 0.7 });
+  const halo = new THREE.Sprite(haloMaterial);
+  halo.scale.set(4.2, 4.2, 1);
+  group.add(halo);
+  // 방 전체에 은은히 번지는 빛: 위쪽 벽일수록, 바닥은 가운데일수록 조명 색이 살짝 더해진다(구운 벽 위에 겹침).
+  const washMaterial = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.BackSide, blending: THREE.AdditiveBlending,
+    uniforms: { tint: { value: color }, strength: { value: 1 } },
+    vertexShader: 'varying vec3 vPos;void main(){vec4 w=modelMatrix*vec4(position,1.);vPos=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}',
+    fragmentShader: `varying vec3 vPos;uniform vec3 tint;uniform float strength;
+      void main(){float d=distance(vPos,vec3(0.,${LAMP_Y.toFixed(1)},0.));float a=.27*strength/(1.+d*d*.035);gl_FragColor=vec4(tint*a,1.);}`
+  });
+  const wash = new THREE.Mesh(new THREE.SphereGeometry(WASH_R, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2), washMaterial);
+  wash.position.y = -LAMP_Y;
+  group.add(wash);
+  const poolMaterial = new THREE.MeshBasicMaterial({ map: glowMap, color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, opacity: 0.26 });
+  const pool = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), poolMaterial);
+  pool.rotation.x = -Math.PI / 2;
+  pool.position.y = -LAMP_Y + 0.03;
+  group.add(pool);
+  return {
+    setColor(name, instant = false) {
+      target.set(LAMP_COLORS[name] || LAMP_COLORS.warm);
+      if (instant) color.copy(target);
+    },
+    update(t, still, dt) {
+      color.lerp(target, 1 - Math.exp(-(dt || 0) * 4));   // 색이 부드럽게 바뀐다
+      const breathe = still ? 1 : 0.94 + Math.sin(t * 1.3) * 0.06;
+      haloMaterial.opacity = 0.7 * breathe;
+      washMaterial.uniforms.strength.value = breathe;
+      shell.rotation.y = still ? 0 : t * 0.08;
+    }
+  };
+}
+
+// 창밖에만 보이는 눈. 창 바깥 공간에 입자를 두고 천천히 떨어뜨린다.
+function addSnow(scene) {
+  // 창 바로 바깥의 얇은 층에만 눈을 뿌린다(그 뒤에는 마을 풍경 사진이 있다).
+  const COUNT = 500, SPAN = 9, DEPTH = 1.4, HEIGHT = 9;
+  const center = toWindow.clone().multiplyScalar(DOME_R + 1.3);
+  const side = new THREE.Vector3(-toWindow.z, 0, toWindow.x);
+  const base = new Float32Array(COUNT * 4);
+  const positions = new Float32Array(COUNT * 3);
+  for (let i = 0; i < COUNT; i++) {
+    const across = (Math.random() - 0.5) * SPAN, along = (Math.random() - 0.5) * DEPTH;
+    base[i * 4] = center.x + side.x * across + toWindow.x * along;
+    base[i * 4 + 1] = Math.random() * HEIGHT;
+    base[i * 4 + 2] = center.z + side.z * across + toWindow.z * along;
+    base[i * 4 + 3] = 0.5 + Math.random() * 0.7;
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const snow = new THREE.Points(geometry, new THREE.PointsMaterial({ color: 0xeef6ff, size: 0.09, transparent: true, opacity: 0.85, depthWrite: false }));
+  snow.frustumCulled = false;
+  scene.add(snow);
+  const place = t => {
+    for (let i = 0; i < COUNT; i++) {
+      const speed = base[i * 4 + 3];
+      positions[i * 3] = base[i * 4] + Math.sin(t * 0.6 + i) * 0.25;
+      positions[i * 3 + 1] = 1 + ((base[i * 4 + 1] - t * speed) % HEIGHT + HEIGHT) % HEIGHT;
+      positions[i * 3 + 2] = base[i * 4 + 2];
+    }
+    geometry.attributes.position.needsUpdate = true;
+  };
+  place(0);
+  return (t, still) => { if (!still) place(t); };
 }
 
 function addNightLandscape(scene) {
@@ -469,41 +742,19 @@ function addNightLandscape(scene) {
   halo.addColorStop(0,'rgba(189,219,255,.22)');halo.addColorStop(.25,'rgba(158,199,248,.075)');halo.addColorStop(1,'rgba(158,199,248,0)');hg.fillStyle=halo;hg.fillRect(0,0,128,128);
   const moonHalo = new THREE.Sprite(new THREE.SpriteMaterial({map:texture(haloCanvas),transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false}));
   moonHalo.position.copy(moon.position);moonHalo.scale.set(38,38,1);scene.add(moonHalo);
-  const top = Math.PI / 2 - 0.62;
-  // 풍경은 그대로 보이고 비스듬히 볼 때만 반사가 드러나는 맑은 유리.
-  const glass = new THREE.Mesh(new THREE.SphereGeometry(DOME_R - 0.055, 32, 24, WINDOW_PHI - 0.24, 0.48, top, 0.5), new THREE.ShaderMaterial({
-    transparent:true,depthWrite:false,side:THREE.DoubleSide,
-    vertexShader:`varying vec2 v;varying vec3 n;varying vec3 eye;void main(){v=uv;vec4 w=modelMatrix*vec4(position,1.);n=normalize(mat3(modelMatrix)*normal);eye=cameraPosition-w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}`,
-    fragmentShader:`varying vec2 v;varying vec3 n;varying vec3 eye;
-      float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
-      void main(){float edge=min(min(v.x,1.-v.x),min(v.y,1.-v.y));
-      float grain=hash(floor(v*vec2(480.,600.)));float frost=pow(1.-smoothstep(0.,.075,edge),2.)*(.08+grain*.10);
-      float fresnel=pow(1.-abs(dot(normalize(n),normalize(eye))),3.);
-      float sheen=pow(max(0.,1.-abs(v.x*.8+v.y*.35-.85)*6.),10.)*.025;
-      gl_FragColor=vec4(mix(vec3(.44,.68,.85),vec3(.8,.94,1.),frost*2.),.012+fresnel*.15+frost+sheen);}`
-  }));
+  // 반타원 아치 창의 유리. 각진 얼음 틀과 창턱은 Blender에서 벽과 함께 구웠다(blender/igloo_room.py의 arch_frame과 같은 계산).
+  const r = e => new THREE.Vector3(Math.cos(e) * Math.cos(WIN_A), Math.sin(e), Math.cos(e) * Math.sin(WIN_A));
+  const mid = r(ARCH_BASE_E + ARCH_B / 2 / DOME_R);
+  const tangent = new THREE.Vector3(0, 1, 0).cross(mid).normalize();
+  const up = mid.clone().cross(tangent).normalize();
+  const arch = new THREE.Shape();
+  arch.moveTo(-ARCH_A, 0);
+  for (let i = 0; i <= 24; i++) { const t = Math.PI - Math.PI * i / 24; arch.lineTo(ARCH_A * Math.cos(t), ARCH_B * Math.sin(t)); }
+  arch.lineTo(ARCH_A, 0);
+  const glass = new THREE.Mesh(new THREE.ShapeGeometry(arch), new THREE.MeshBasicMaterial({ color: 0xc4def5, transparent: true, opacity: 0.07, depthWrite: false, side: THREE.DoubleSide }));
+  glass.matrixAutoUpdate = false;
+  glass.matrix.makeBasis(tangent, up, mid.clone().negate()).setPosition(r(ARCH_BASE_E).multiplyScalar(DOME_R).addScaledVector(mid, -0.05));
   scene.add(glass);
-  const frameMat = new THREE.MeshStandardMaterial({color:0x91acbe,roughness:0.32,metalness:0.18,side:THREE.DoubleSide});
-  for(const [p,w,t,h] of [[WINDOW_PHI-0.252,0.012,top-0.012,0.524],[WINDOW_PHI+0.24,0.012,top-0.012,0.524],[WINDOW_PHI-0.252,0.504,top-0.012,0.012],[WINDOW_PHI-0.252,0.504,top+0.5,0.012]]) {
-    scene.add(new THREE.Mesh(new THREE.SphereGeometry(DOME_R-0.025,32,16,p,w,t,h),frameMat));
-  }
-  // 창살과 창짝 테두리는 유리보다 안쪽으로 돌출시켜 두께가 보이게 한다.
-  const railMat = new THREE.MeshStandardMaterial({ color: 0x9fb9cc, roughness: 0.38, metalness: 0.25 });
-  const point = (phi, theta, radius = DOME_R - 0.15) => new THREE.Vector3(
-    -radius * Math.cos(phi) * Math.sin(theta), radius * Math.cos(theta), radius * Math.sin(phi) * Math.sin(theta));
-  const rail = (p0, t0, p1, t1, thickness) => {
-    const points = Array.from({ length: 21 }, (_, i) => point(THREE.MathUtils.lerp(p0, p1, i / 20), THREE.MathUtils.lerp(t0, t1, i / 20)));
-    scene.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 24, thickness, 8, false), railMat));
-  };
-  const left = WINDOW_PHI - 0.24, right = WINDOW_PHI + 0.24, bottom = top + 0.5;
-  rail(left, top, left, bottom, 0.075);
-  rail(right, top, right, bottom, 0.075);
-  rail(left, top, right, top, 0.075);
-  rail(left, bottom, right, bottom, 0.075);
-  // 가운데 맞댐선은 두 창짝이 만나는 부분이며 가로 창살은 한 줄만 둔다.
-  rail(WINDOW_PHI - 0.004, top, WINDOW_PHI - 0.004, bottom, 0.043);
-  rail(WINDOW_PHI + 0.004, top, WINDOW_PHI + 0.004, bottom, 0.043);
-  rail(left, top + 0.25, right, top + 0.25, 0.045);
 
 }
 
@@ -522,13 +773,12 @@ function normalizeLink(value) {
 const hostOf = link => {
   try { return new URL(link).hostname.replace(/^www\./, ''); } catch { return link; }
 };
-const ICON_CLOSE = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>';
 const ICON_PREV = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2L4 7l5 5"/></svg>';
 const ICON_NEXT = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2l5 5-5 5"/></svg>';
 // 첫 화면 캡처가 생기기 전까지 쓰는 예시 그림.
 
 
-export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onNotificationsRead = () => {}, onExteriorLightChange = () => {} }) {
+export function createRoom({ canvas, renderer, backend, onRoomPublicChange = () => {}, onNotificationsRead = () => {}, onExteriorLightChange = () => {} }) {
   const style = document.createElement('style');
   style.textContent = STYLE;
   document.head.appendChild(style);
@@ -538,15 +788,48 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onN
   const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 500);
 
   // 방: 돔과 바닥은 그림을 그대로 보여준다.
-  const dome = new THREE.Mesh(
-    makeOpenDome(),
-    new THREE.MeshBasicMaterial({ map: makeDomeTexture(), side: THREE.BackSide })
-  );
+  // 구운 방을 받기 전에 쓰는 임시 벽·바닥이다.
+  const dome = new THREE.Mesh(makeBlockDome(), new THREE.MeshStandardMaterial({
+    vertexColors: true, roughness: 0.45, metalness: 0, side: THREE.DoubleSide, flatShading: true,
+    emissive: 0x16304a, emissiveIntensity: 0.55
+  }));
   scene.add(dome);
-  const floor = new THREE.Mesh(new THREE.CircleGeometry(DOME_R, 64), new THREE.MeshBasicMaterial({ map: makeFloorTexture() }));
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(DOME_R + 0.3, 64), new THREE.MeshBasicMaterial({ map: makeFloorTexture() }));
   floor.rotation.x = -Math.PI / 2;
   scene.add(floor);
+  // Blender에서 빛을 구운 벽·바닥(blender/igloo_room.py). 모양(GLB)과 그림(KTX2)을 따로 받고,
+  // 휴대폰·작은 화면은 작은 그림을 쓴다. 다 받으면 위의 임시 벽·바닥을 대신하고, 실패하면 임시 방을 그대로 쓴다.
+  if (renderer) {
+    const small = matchMedia('(pointer: coarse)').matches || Math.min(window.screen.width, window.screen.height) < 820;
+    const ktx2 = new KTX2Loader().setTranscoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/basis/').detectSupport(renderer);
+    const loadMap = name => ktx2.loadAsync(`./assets/igloo-${name}-${small ? 'mobile' : 'desktop'}.ktx2?v=${BAKE_VERSION}`)
+      .then(map => { map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 4; return map; });
+    Promise.all([new GLTFLoader().loadAsync(`./assets/igloo-room.glb?v=${BAKE_VERSION}`), loadMap('dome'), loadMap('floor')])
+      .then(([gltf, domeMap, floorMap]) => {
+        gltf.scene.traverse(mesh => {
+          if (!mesh.isMesh) return;
+          mesh.material.dispose();
+          mesh.material = new THREE.MeshBasicMaterial({ map: mesh.name.includes('Dome') ? domeMap : floorMap, color: ROOM_SHADE, side: THREE.DoubleSide });
+        });
+        scene.add(gltf.scene);
+        dome.visible = false;
+        floor.visible = false;
+        ktx2.dispose();
+      })
+      .catch(error => console.warn('구운 이글루 방을 불러오지 못해 임시 방을 씁니다.', error));
+  }
   addNightLandscape(scene);
+  const updateSnow = addSnow(scene);
+  // 받침대 위 수정 3개: 프로젝트 슬롯 3개에 하나씩 대응한다.
+  const crystals = [-1, 0, 1].map((k, i) => addCrystal(scene, k * 2.3, 11 + i * 7));
+  const lamp = addCeilingLamp(scene);
+  // 창 너머 배경: 들어올 때 main.js가 찍어 준 실제 마을 풍경을 창 바깥 큰 판에 붙인다.
+  const VIEW_D = DOME_R + 2.6, VIEW_H = 2 * VIEW_D * Math.tan(THREE.MathUtils.degToRad(25));
+  const windowView = new THREE.Mesh(new THREE.PlaneGeometry(VIEW_H * 16 / 9, VIEW_H), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  windowView.position.copy(toWindow).multiplyScalar(VIEW_D).setY(2.8);
+  windowView.lookAt(0, 2.8, 0);
+  windowView.visible = false;
+  scene.add(windowView);
 
   scene.add(new THREE.HemisphereLight(0xd5edff, 0x3a5870, 1.5));
   const sun = new THREE.DirectionalLight(0xb9dcff, 1.8);
@@ -704,6 +987,20 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onN
       anchor:new THREE.Vector3(x,box.h+0.45,z),glow:0,wrap:0,pop:0};
   });
 
+  // 상자를 숨길 때는 받침대 위 수정이 프로젝트를 보여 준다(누르면 같은 카드가 열린다).
+  if (!SHOW_BOXES) slots.forEach((slot, i) => {
+    slot.root.visible = false;
+    scene.remove(slot.mesh, slot.hit);
+    slot.crystal = crystals[i];
+    crystals[i].hit.userData.slot = i;
+    slot.mesh = slot.hit = crystals[i].hit;
+    slot.anchor = crystals[i].anchor;
+  });
+  // 수정 안 패널은 항상 웹 화면 예시 그림이다. 프로젝트가 있거나 내 방이면 수정을 보여 준다.
+  function paintCrystal(slot) {
+    if (slot.crystal) slot.crystal.group.visible = Boolean(slot.project) || isMine;
+  }
+
   // 공중에 떠다니는 먼지. 빛이 있는 공간처럼 보이게 한다.
   const dust = (() => {
     const n = 140, pos = new Float32Array(n * 3);
@@ -724,7 +1021,7 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onN
   slots.forEach(slot => labels.appendChild(slot.label));
   const controls = document.createElement('section');
   controls.className = 'room-ui room-controls';controls.hidden = true;controls.setAttribute('aria-label', '이글루 안 조작 안내');
-  controls.innerHTML = `<h2>이글루 안 둘러보기</h2><div class="room-controls-desktop"><div class="room-control-row"><span class="room-key-grid"><kbd data-key="KeyW">W</kbd><kbd data-key="KeyA">A</kbd><kbd data-key="KeyS">S</kbd><kbd data-key="KeyD">D</kbd></span><span>앞뒤 · 좌우 이동</span></div><div class="room-control-row"><span><kbd data-key="KeyQ">Q</kbd> <small>위</small> <kbd data-key="KeyE">E</kbd> <small>아래</small></span><span>높이 조절</span></div><div class="room-controls-divider"></div><div class="room-control-row"><kbd data-mouse="2">오른쪽 누른 채 이동</kbd><span>시선 회전</span></div><div class="room-control-row"><kbd data-mouse="0">왼쪽 클릭</kbd><span>선물상자 열기</span></div></div><div class="room-controls-touch">한 손가락 드래그 · 둘러보기<br>두 손가락 벌리기 · 이동<br>선물상자 터치 · 열기</div>`;
+  controls.innerHTML = `<h2>이글루 안 둘러보기</h2><div class="room-controls-desktop"><div class="room-control-row"><span class="room-key-grid"><kbd data-key="KeyW">W</kbd><kbd data-key="KeyA">A</kbd><kbd data-key="KeyS">S</kbd><kbd data-key="KeyD">D</kbd></span><span>앞뒤 · 좌우 이동</span></div><div class="room-control-row"><span><kbd data-key="KeyQ">Q</kbd> <small>위</small> <kbd data-key="KeyE">E</kbd> <small>아래</small></span><span>높이 조절</span></div><div class="room-controls-divider"></div><div class="room-control-row"><kbd data-mouse="0">왼쪽 누른 채 이동</kbd><span>시선 회전</span></div></div><div class="room-controls-touch">한 손가락 드래그 · 둘러보기<br>두 손가락 벌리기 · 이동</div>`;
   document.body.append(controls);
   const controlKeys = [...controls.querySelectorAll('[data-key]')];
   const controlMouse = [...controls.querySelectorAll('[data-mouse]')];
@@ -732,7 +1029,7 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onN
   const formVeil = document.createElement('div');
   formVeil.className = 'room-ui room-veil';
   formVeil.hidden = true;
-  formVeil.innerHTML = `<form class="room-form" role="dialog" aria-modal="true" aria-labelledby="room-form-title"><h2 id="room-form-title">이 상자에 프로젝트 넣기</h2><p>직접 작성한 소개와 이미지가 프로젝트 카드에 표시돼요.</p><div class="room-form-layout"><div class="room-form-fields"><label>프로젝트 이름<input name="title" required maxlength="120" placeholder="프로젝트 이름"></label><label>프로젝트 링크<input name="link" type="text" inputmode="url" required autocomplete="off" spellcheck="false" placeholder="https://" maxlength="2048"></label><label>프로젝트 설명<textarea name="description" required maxlength="5000" placeholder="어떤 서비스인지 소개해 주세요."></textarea></label><label>사용법<textarea name="instructions" required maxlength="5000" placeholder="시작 방법과 주요 기능을 순서대로 적어 주세요."></textarea></label></div><section class="room-form-image"><label>대표 이미지<input name="image" type="file" accept="image/png,image/jpeg,image/webp" required></label><p>이미지 1장 · PNG·JPG·WebP, 최대 5MB</p><div class="room-preview-frame"><span>대표 이미지를 선택해 주세요</span><img class="room-preview" alt="선택한 대표 이미지 미리보기" hidden></div></section></div><p class="room-error" role="alert"></p><div class="room-actions"><button type="submit" class="room-btn primary">넣기</button><button type="button" class="room-btn" data-cancel>취소</button></div></form>`;
+  formVeil.innerHTML = `<form class="room-form" role="dialog" aria-modal="true" aria-labelledby="room-form-title"><h2 id="room-form-title">이 상자에 프로젝트 넣기</h2><p>직접 작성한 소개와 이미지가 프로젝트 카드에 표시돼요.</p><div class="room-form-layout"><div class="room-form-fields"><label>프로젝트 이름<input name="title" required maxlength="120" placeholder="프로젝트 이름"></label><label>프로젝트 링크<input name="link" type="text" inputmode="url" required autocomplete="off" spellcheck="false" placeholder="https://" maxlength="2048"></label><label>프로젝트 설명<textarea name="description" required maxlength="5000" placeholder="어떤 서비스인지 소개해 주세요."></textarea></label><label>사용법<textarea name="instructions" required maxlength="5000" placeholder="시작 방법과 주요 기능을 순서대로 적어 주세요."></textarea></label><div class="room-announce" hidden><label class="room-check"><input type="checkbox" name="announce"> 마을에 업데이트 알리기</label><label class="room-note" hidden>바뀐 점 (선택)<input name="note" maxlength="120" autocomplete="off" placeholder="예: 로그인 화면을 새로 만들었어요"></label></div></div><section class="room-form-image"><label>대표 이미지<input name="image" type="file" accept="image/png,image/jpeg,image/webp" required></label><p>이미지 1장 · PNG·JPG·WebP, 최대 5MB</p><div class="room-preview-frame"><span>대표 이미지를 선택해 주세요</span><img class="room-preview" alt="선택한 대표 이미지 미리보기" hidden></div></section></div><p class="room-error" role="alert"></p><div class="room-actions"><button type="submit" class="room-btn primary">넣기</button><button type="button" class="room-btn" data-cancel>취소</button></div></form>`;
   const card = document.createElement('aside');
   card.className = 'room-ui room-card';
   card.hidden = true;
@@ -762,7 +1059,8 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onN
   rewardRow.className = 'room-reward-row';
   privacyRoot.append(rewardRow);
   const cardThemes = mountCardThemes(rewardRow, card, backend, [formVeil.querySelector('.room-form')]);
-  const exteriorLight = mountExteriorLight(rewardRow, backend, { onChange:onExteriorLightChange });
+  // 조명 색을 바꾸면 천장 조명이 바로 따라 바뀌고, 마을의 바깥 불빛도 갱신된다.
+  const exteriorLight = mountExteriorLight(rewardRow, backend, { onChange: color => { lamp.setColor(color); onExteriorLightChange(color); } });
   const feedback = mountProjectFeedback(card.querySelector('.project-feedback'), backend, { onViewed: async (id, before) => {
     if (!isMine || !active) return;
     await backend.markCommentNotificationsRead(id, before);
@@ -820,9 +1118,14 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onN
   }
   const formError = form.querySelector('.room-error');
   const submitBtn = form.querySelector('[type=submit]');
+  // 수정할 때만 보이는 "마을에 업데이트 알리기"(광장 보드의 새 프로젝트 칸에 다시 올라간다). 체크하면 바뀐 점 메모(선택)가 열린다.
+  const announceBox = form.querySelector('.room-announce'), announceInput = form.elements.announce;
+  const noteLabel = form.querySelector('.room-note'), noteInput = form.elements.note;
+  announceInput.addEventListener('change', () => { noteLabel.hidden = !announceInput.checked; if (announceInput.checked) noteInput.focus(); });
 
   // 방 안에서 자유롭게 이동하되 바닥과 얼음 돔 밖으로 나가지 않는다.
-  const START = { yaw: ROOM_YAW, pitch: 0.26, radius: 9 };
+  // 들어왔을 때 시점: 입구 바로 안쪽 높은 곳에서 받침대와 창을 내려다본다(사용자가 정한 값).
+  const START = { x: -5.69, y: 5.77, z: -2.88, yaw: -2.012, pitch: -0.33 };
   const view = { yaw: 0, pitch: 0, targetYaw: 0, targetPitch: 0 };
   const position = new THREE.Vector3();
   const forward = new THREE.Vector3(), right = new THREE.Vector3(), movement = new THREE.Vector3();
@@ -831,12 +1134,8 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onN
   const typing = () => document.activeElement?.matches('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
   const clampView = () => { view.targetPitch = THREE.MathUtils.clamp(view.targetPitch, -Math.PI / 2 + 0.05, Math.PI / 2 - 0.05); };
   const resetView = () => {
-    position.set(Math.cos(START.yaw) * Math.cos(START.pitch) * START.radius,
-      1.15 + Math.sin(START.pitch) * START.radius, Math.sin(START.yaw) * Math.cos(START.pitch) * START.radius);
-    camera.position.copy(position);
-    camera.lookAt(0, 1.15, 0);
-    rotation.setFromQuaternion(camera.quaternion, 'YXZ');
-    Object.assign(view, { yaw: rotation.y, targetYaw: rotation.y, pitch: rotation.x, targetPitch: rotation.x });
+    position.set(START.x, START.y, START.z);
+    Object.assign(view, { yaw: START.yaw, targetYaw: START.yaw, pitch: START.pitch, targetPitch: START.pitch });
   };
   const placeCamera = () => {
     camera.position.copy(position);
@@ -844,8 +1143,10 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onN
   };
   const moveCamera = (dx, dy, dz) => {
     const next = position.clone().add(new THREE.Vector3(dx, dy, dz));
-    next.y = THREE.MathUtils.clamp(next.y, 0.65, DOME_R - 0.5);
-    const maxR = Math.sqrt(Math.max(0, (DOME_R - 0.4) ** 2 - next.y ** 2));
+    // 벽·천장에 너무 바짝 붙지 않게: 방 가운데에서 WASH_R - 0.3 안쪽으로만(조명 번짐 막 안쪽에 머문다)
+    const ROOM_LIMIT = WASH_R - 0.3;
+    next.y = THREE.MathUtils.clamp(next.y, 0.65, ROOM_LIMIT - 0.2);
+    const maxR = Math.sqrt(Math.max(0, ROOM_LIMIT ** 2 - next.y ** 2));
     const radius = Math.hypot(next.x, next.z);
     if (radius > maxR) { next.x *= maxR / radius; next.z *= maxR / radius; }
     // 카메라가 상자 속으로 들어가지 않도록 몸통 높이에서 충돌을 막는다.
@@ -855,6 +1156,19 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onN
       const localX = Math.cos(at.yaw) * x - Math.sin(at.yaw) * z;
       const localZ = Math.sin(at.yaw) * x + Math.cos(at.yaw) * z;
       if (Math.abs(localX) < box.w / 2 + 0.25 && Math.abs(localZ) < box.d / 2 + 0.25) return;
+    }
+    if (next.distanceTo(new THREE.Vector3(0, LAMP_Y, 0)) < 0.9) return;   // 천장 조명에 부딪히지 않게
+    // 입구 아치와 문 쪽으로는 들어가지 못하게(아치 블록 안쪽 + 여유 0.5m)
+    {
+      const r = Math.hypot(next.x, next.z);
+      const da = Math.atan2(Math.sin(Math.atan2(next.z, next.x) - ENTRY.a), Math.cos(Math.atan2(next.z, next.x) - ENTRY.a));
+      if (r > DOME_R - 2.1 && Math.abs(da) * r < ENTRY.half + 0.5 && next.y < ENTRY.h + 0.5) return;
+    }
+    // 얼음 받침대 안으로 들어가지 않게
+    if (next.y < BENCH.h + 0.5) {
+      const bx = next.x - Math.cos(BENCH.a) * BENCH.r, bz = next.z - Math.sin(BENCH.a) * BENCH.r;
+      const along = -Math.sin(BENCH.a) * bx + Math.cos(BENCH.a) * bz, across = Math.cos(BENCH.a) * bx + Math.sin(BENCH.a) * bz;
+      if (Math.abs(along) < BENCH.w / 2 + 0.3 && Math.abs(across) < BENCH.d / 2 + 0.3) return;
     }
     position.copy(next);
   };
@@ -882,6 +1196,7 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onN
   function setLabels() {
     for (const slot of slots) {
       const show = Boolean(slot.project) || isMine;
+      paintCrystal(slot);
       slot.label.hidden = !show;
       slot.label.textContent = slot.project ? slot.project.title : '프로젝트 넣기';
       slot.label.dataset.empty = String(!slot.project);
@@ -984,6 +1299,7 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onN
       if (project.image_url) { preview.src = project.image_url; preview.hidden = false; }
     }
     formError.textContent = '';
+    announceBox.hidden = !project; announceInput.checked = false; noteLabel.hidden = true; noteInput.value = '';
     submitBtn.disabled = saving;
     formVeil.hidden = false;
     linkInput.focus();
@@ -1045,8 +1361,18 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onN
       if (token !== loadToken) return;
       const project = editing ? await backend.updateProject(editing.id, values) : await backend.addProject(targetHome, values);
       if (token !== loadToken) return;
+      // 수정은 이미 저장된 뒤라, 알림만 실패해도 수정 내용은 그대로 둔다.
+      let announceError = null;
+      if (editing && announceInput.checked) {
+        try { await backend.announceProjectUpdate(editing.id, noteInput.value); } catch (error) { announceError = error; }
+      }
       const list = filled().map(s => s.project);
       applyProjects(editing ? list.map(item => item.id === project.id ? project : item) : [...list, project]);
+      if (announceError) {
+        formSlot = slots.find(s => s.project?.id === project.id) || formSlot;
+        formError.textContent = `수정은 저장됐지만 업데이트 알림은 보내지 못했어요. 다시 저장하면 알림을 다시 시도해요. (${failText(announceError)})`;
+        return;
+      }
       if (!editing) cardThemes.projectPosted(previousThemeUnlock);
       if (!editing) exteriorLight.refresh();
       saving = false;
@@ -1139,10 +1465,10 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onN
     }
     if (!dragged && Math.hypot(e.clientX - held.startX, e.clientY - held.startY) < 6) return;
     dragged = true;
-    if (!held.touch && held.button !== 2) return;
+    if (!held.touch && held.button !== 0) return;   // 마우스는 왼쪽 버튼을 누른 채 끌어 시선을 돌린다
     canvas.style.cursor = 'grabbing';
-    view.targetYaw -= dx * 0.0052;
-    view.targetPitch -= dy * 0.0032;
+    view.targetYaw -= dx * 0.0032;
+    view.targetPitch -= dy * 0.002;
     clampView();
   });
   const endPointer = e => {
@@ -1177,8 +1503,12 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onN
       camera.fov = aspect < 1.1 ? 68 : 50;
       camera.updateProjectionMatrix();
     },
-    enter({ home: nextHome, isMine: mine, isPublic = false, ownerName: name, projectId = null }) {
+    enter({ home: nextHome, isMine: mine, isPublic = false, ownerName: name, projectId = null, windowView: view = null, lightColor = 'warm' }) {
       active = true;
+      lamp.setColor(lightColor, true);
+      windowView.material.map = view;
+      windowView.material.needsUpdate = true;
+      windowView.visible = Boolean(view);
       home = nextHome;
       isMine = Boolean(mine);
       privacy.enter(nextHome, isMine, isPublic);
@@ -1232,12 +1562,25 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onN
       }
       placeCamera();
       const still = reduceMotion.matches;
+      updateSnow(t, still);
+      crystals.forEach(crystal => crystal.update(t, still));
+      lamp.update(t, still, dt);
       treasureLight.intensity=0;
       for (const slot of slots) {
         // 눌러 볼 수 있는 상자와 선택된 상자에만 은은한 빛이 돈다.
         const want = selected === slot ? 0.32 : hovered === slot && clickable(slot) ? 0.2 : 0;
         slot.glow += (want - slot.glow) * (1 - Math.exp(-dt * 10));
         slot.bodyMaterial.emissiveIntensity = slot.glow;
+        if (slot.crystal) {
+          // 수정: 가리키거나 고른 수정이 더 밝게 빛나고, 이름표는 수정 위에 뜬다.
+          slot.crystal.setFocus(slot.glow * 3);
+          slot.label.style.display = '';
+          screen.copy(slot.anchor).project(camera);
+          if (screen.z >= 1) { slot.label.style.display = 'none'; continue; }
+          slot.label.style.left = (screen.x * 0.5 + 0.5) * innerWidth + 'px';
+          slot.label.style.top = (-screen.y * 0.5 + 0.5) * innerHeight + 'px';
+          continue;
+        }
         const targetWrap = slot.project && selected !== slot ? 1 : 0;
         const step = dt / 0.85;
         slot.wrap = still ? targetWrap : THREE.MathUtils.clamp(slot.wrap + Math.sign(targetWrap-slot.wrap)*Math.min(step,Math.abs(targetWrap-slot.wrap)),0,1);

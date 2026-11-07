@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { createBearNavigation, makeBearLoop } from './bear-navigation.js?v=fine-circuit';
 
 const ANCHORS = [
@@ -12,7 +13,7 @@ const ROUTE_OPTIONS = [ANCHORS,
 ];
 
 export async function addPolarBear(scene, { obstacles, heightAt, height = 1.12 }) {
-  const gltf = await new GLTFLoader().loadAsync(new URL('./assets/PolarBear-walk.glb?v=tail-skin-fix', import.meta.url).href);
+  const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(new URL('./assets/PolarBear-walk.glb?v=meshopt-webp', import.meta.url).href);
   const model = gltf.scene, clip = gltf.animations[0];
   if (!clip) throw new Error('북극곰 걷기 모션이 없습니다.');
   const mixer = new THREE.AnimationMixer(model);
