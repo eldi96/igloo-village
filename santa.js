@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 export async function addSanta(scene, { fireSpot, heightAt, height = 1.5 }) {
   if (!fireSpot) return;
-  const gltf = await new GLTFLoader().loadAsync(new URL('./assets/SantaGirl.glb', import.meta.url).href);
+  const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(new URL('./assets/SantaGirl.glb?v=meshopt-webp', import.meta.url).href);
   const model = gltf.scene;
   // 원본 대기 모션을 반복하고 재질과 텍스처를 유지한다.
   let mixer = null;
