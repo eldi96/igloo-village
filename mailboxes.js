@@ -97,7 +97,9 @@ export function addMailboxes(scene, { places, heightAt }) {
     if (!matrices.homes) matrices.homes = [];
     matrices.homes.push(places.indexOf(home));
     const ref = { geometry, material, index, matrix, x, y, z, sx, sy, sz, front: Math.abs(x) < .3 && z >= .31 };
-    if (y >= .76) currentParts.push(ref);
+    // 기둥·받침(y < .76)은 마우스를 올려도 들썩이지 않지만, 세우기·숨기기에는 함께 움직인다.
+    ref.fixed = y < .76;
+    currentParts.push(ref);
     return ref;
   };
   for (const [homeIndex, home] of places.entries()) {
@@ -134,7 +136,7 @@ export function addMailboxes(scene, { places, heightAt }) {
     halo.position.set(origin.x+s*.378, origin.y+1.101, origin.z+c*.378);
     halo.visible = false; halo.raycast = () => {};
     root.add(halo);
-    indicators.push({ homeIndex, home, origin, parts: currentParts, on, off, halo, anchor: halo.position.clone(), unread: null, lift: 0, open: 0 });
+    indicators.push({ homeIndex, home, origin, parts: currentParts, on, off, halo, anchor: halo.position.clone(), unread: null, lift: 0, open: 0, rise: 0, riseT: null, needsPose: true });
 
     for (const side of [-1, 1]) {
       part(home, origin, smallBox, brassMat, side * 0.19, 0.846, 0.334, 0.036, 0.018, 0.017);
@@ -161,8 +163,11 @@ export function addMailboxes(scene, { places, heightAt }) {
   }
   root.userData.mailboxCount = places.length;
   const hidden = new THREE.Matrix4().makeScale(0, 0, 0);
-  root.userData.setUnreadHomes = homes => {
-    const unread = new Set(homes);
+  // 알림 목록과 튜토리얼 미리보기(previewHome)를 합쳐 투입구 빛을 켠다.
+  let unreadList = [], previewHome = null;
+  const applyUnread = () => {
+    const unread = new Set(unreadList);
+    if (previewHome !== null) unread.add(previewHome);
     for (const state of indicators) {
       const enabled = unread.has(state.homeIndex);
       if (state.unread === enabled) continue;
@@ -178,6 +183,25 @@ export function addMailboxes(scene, { places, heightAt }) {
       }
     }
   };
+  root.userData.setUnreadHomes = homes => { unreadList = [...homes]; applyUnread(); };
+  root.userData.setPreviewHome = home => { previewHome = home; applyUnread(); };
+  // 주인이 있는 이글루에만 우편함을 세운다. raiseHome은 깃발과 함께 땅에서 올라온다.
+  let rising = 0;
+  root.userData.setOwnedHomes = (homes, raiseHome = null) => {
+    const owned = new Set(homes);
+    for (const state of indicators) {
+      if (!owned.has(state.homeIndex)) {
+        if (state.rise !== 0 || state.riseT !== null) { state.rise = 0; state.riseT = null; state.needsPose = true; }
+      } else if (state.rise === 0 && state.riseT === null) {
+        // 깃발(0.7초)이 거의 다 선 뒤에 따라 올라오도록 음수에서 출발해 약 0.55초 기다린다.
+        if (state.homeIndex === raiseHome && !reducedMotion.matches) state.riseT = -0.85;
+        else state.rise = 1;
+        state.needsPose = true;
+      }
+    }
+  };
+  root.userData.isRising = () => rising > 0;
+  root.userData.spotOf = home => indicators.find(state => state.homeIndex === home)?.origin ?? null;
   let hoveredHome = null, previousTime = null;
   root.userData.setHoveredHome = home => { hoveredHome = home; };
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -187,7 +211,18 @@ export function addMailboxes(scene, { places, heightAt }) {
     previousTime = timeSeconds;
     const ease = reducedMotion.matches ? 1 : 1 - Math.exp(-dt * 8);
     const pixels = Math.max(1, viewportHeight);
+    rising = 0;
     for (const state of indicators) {
+      if (state.riseT !== null) {
+        // 0.65초 동안 살짝 넘쳤다가 자리 잡으며, 좌우로 두세 번 흔들리다 멈춘다.
+        state.riseT += dt / 0.65;
+        const t = Math.min(Math.max(state.riseT, 0), 1), u = t - 1;
+        state.rise = t === 0 ? 0 : 1 + 2.2 * u * u * u + 1.2 * u * u;
+        state.roll = Math.sin(t * Math.PI * 3) * 0.09 * (1 - t);
+        state.needsPose = true;
+        if (state.riseT >= 1) { state.riseT = null; state.rise = 1; state.roll = 0; }
+        rising++;
+      }
       const target = hoveredHome === state.homeIndex ? 1 : 0;
       const openTarget = target && state.unread ? 1 : 0;
       const lift = state.lift + (target - state.lift) * ease;
@@ -198,24 +233,30 @@ export function addMailboxes(scene, { places, heightAt }) {
         state.needsPose = false;
         state.lift = nextLift; state.open = nextOpen;
         const angle = nextOpen * .16, ca = Math.cos(angle), sa = Math.sin(angle);
+        const roll = state.roll || 0, cr = Math.cos(roll), sr = Math.sin(roll);
         const c = Math.cos(state.home.yaw), s = Math.sin(state.home.yaw);
         for (const ref of state.parts) {
           const mesh = meshes.get(ref.geometry).get(ref.material);
           const visible = state.on.includes(ref) ? state.unread : state.off.includes(ref) ? !state.unread : true;
           if (!visible) continue;
+          if (state.rise < .001) { mesh.setMatrixAt(ref.index, hidden); mesh.instanceMatrix.needsUpdate = true; continue; }
           const y = ref.front ? .825 + ca * (ref.y - .825) - sa * (ref.z - .31) : ref.y;
           const z = ref.front ? .31 + sa * (ref.y - .825) + ca * (ref.z - .31) : ref.z;
-          transform.position.set(state.origin.x + c * ref.x + s * z, state.origin.y + y + nextLift * .03, state.origin.z - s * ref.x + c * z);
-          transform.rotation.set(ref.front ? angle : 0, state.home.yaw, 0, 'YXZ');
+          // 흔들림은 바닥 받침을 축으로 옆으로 기울인다.
+          const ly = (y + (ref.fixed ? 0 : nextLift * .03)) * state.rise;
+          const lx = ref.x * cr - ly * sr, lyRolled = ref.x * sr + ly * cr;
+          transform.position.set(state.origin.x + c * lx + s * z, state.origin.y + lyRolled, state.origin.z - s * lx + c * z);
+          transform.rotation.set(ref.front ? angle : 0, state.home.yaw, roll, 'YXZ');
           const glow = ref.material === mailLightMat || ref.material === mailGlowMat;
-          transform.scale.set(ref.sx * (glow ? 1 + nextOpen * .12 : 1), ref.sy * (glow ? 1 + nextOpen * .8 : 1), ref.sz);
+          transform.scale.set(ref.sx * (glow ? 1 + nextOpen * .12 : 1), ref.sy * (glow ? 1 + nextOpen * .8 : 1) * state.rise, ref.sz);
           transform.updateMatrix(); mesh.setMatrixAt(ref.index, transform.matrix); mesh.instanceMatrix.needsUpdate = true;
         }
         const ay = .825 + ca * (1.101 - .825) - sa * (.378 - .31);
         const az = .31 + sa * (1.101 - .825) + ca * (.378 - .31);
         state.anchor.set(state.origin.x + s * az, state.origin.y + ay + nextLift * .03, state.origin.z + c * az);
       }
-      if (!state.unread) continue;
+      if (state.rise < 1) state.halo.visible = false;
+      if (!state.unread || state.rise < 1) continue;
       towardCamera.copy(camera.position).sub(state.anchor);
       const distance = towardCamera.length();
       const far = THREE.MathUtils.smoothstep(distance, 12, 34);
@@ -243,6 +284,7 @@ export function addMailboxes(scene, { places, heightAt }) {
     return hit ? hit.object.userData.mailboxHomes[hit.instanceId] : null;
   };
   root.userData.setUnreadHomes([]);
+  root.userData.setOwnedHomes([]);
   scene.add(root);
   return root;
 }

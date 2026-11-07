@@ -1,12 +1,13 @@
 import * as THREE from 'three';
-import { addMailboxes } from './mailboxes.js?v=hover-lid';
+import { addMailboxes } from './mailboxes.js?v=rise3';
 
 export function addVillage(scene, ctx) {
-  const { places, hub, heightAt, rng, lighthouse, statsSite, mailPreviewHome = null } = ctx;
+  const { places, hub, heightAt, rng, lighthouse, statsSite } = ctx;
   const root = new THREE.Group();
   root.name = 'village';
   scene.add(root);
   const TAU = Math.PI * 2, roads = [], occupied = [], flames = [];
+  let muted = false; // true인 동안 instance()가 그리지 않는다(난수 사용량은 그대로 유지)
   const rand = (a, b) => a + (b - a) * rng();
   const mat = (color, roughness = 0.85, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness, ...extra });
   const snow = mat(0xc2d4df), wood = mat(0x49372c), bark = mat(0x302e2b);
@@ -19,6 +20,7 @@ export function addVillage(scene, ctx) {
   const sphere = new THREE.SphereGeometry(1, 8, 5);
   const batches = new Map();
   function instance(geometry, material, x, y, z, sx, sy, sz, yaw = 0, rz = 0) {
+    if (muted) return;
     let byMaterial = batches.get(geometry);
     if (!byMaterial) batches.set(geometry, byMaterial = new Map());
     let list = byMaterial.get(material);
@@ -334,6 +336,19 @@ export function addVillage(scene, ctx) {
     fireLight = new THREE.PointLight(0xffa34b, 5, 9, 2); fireLight.position.set(x, y + 0.85, z); root.add(fireLight);
     drift(x + 0.95, z, 0.45);
   }
+  // 모닥불 왼쪽 빈 자리. 마을 배치가 매번 같게 나오도록(고정 시드) 예약만 그대로 유지한다.
+  // 게시판은 이 자리가 아니라 아래 첫 벤치 자리에 선다(boardSpot).
+  let boardSpot = null;
+  if (fireSpot) {
+    const candidates = [[-2.7, 0.3], [-2.7, -0.6], [-3.1, 0.9], [-3.3, -0.3], [-2.9, 1.5], [-3.6, 0.6]];
+    let gap = null;
+    for (const [dx, dz] of candidates) {
+      const x = fireSpot.x + dx, z = fireSpot.z + dz;
+      if (available(x, z, 0.95)) { gap = { x, z }; break; }
+    }
+    gap ||= { x: fireSpot.x + candidates[0][0], z: fireSpot.z + candidates[0][1] };
+    occupied.push({ ...gap, r: 0.95 });
+  }
   const foliage = mat(0x203f3e);
   const minX = Math.min(...places.map(p => p.x - p.radius)), maxX = Math.max(...places.map(p => p.x + p.radius));
   const backZ = Math.min(...places.map(p => p.z - p.radius));
@@ -369,6 +384,9 @@ export function addVillage(scene, ctx) {
   }
   for (let i = 0; i < 3; i++) {
     const p = findSpot(1.3, 8, 23); if (!p) continue;
+    // 모닥불 왼쪽 앞의 첫 벤치는 그리지 않고, 그 자리에 익명 게시판을 세운다.
+    muted = i === 0;
+    if (i === 0) boardSpot = { x: p.x, z: p.z };
     const yaw = rand(0, TAU);
     for (const side of [-1, 1]) localPart(p, yaw, side * 0.36, 0.15, 0, 0.09, 0.13, 1.65, wood);
     for (let j = 0; j < 5; j++) localPart(p, yaw, 0, 0.34, (j - 2) * 0.27, 0.92, 0.1, 0.2, wood);
@@ -377,6 +395,7 @@ export function addVillage(scene, ctx) {
     localPart(p, yaw, -0.18, 0.91, 0.12, 0.5, 0.05, 0.68, snow);
     drift(p.x + 0.85, p.z, 0.45);
   }
+  muted = false;
   for (let i = 0; i < 2; i++) {
     const p = findSpot(1.65, 9, 24); if (!p) continue;
     const yaw = rand(0, TAU);
@@ -473,6 +492,7 @@ export function addVillage(scene, ctx) {
   }
   return {
     fireSpot,
+    boardSpot,
     // 실제 배치 결과를 동물 길찾기에도 사용한다. 장식도 고체로 취급한다.
     walkingObstacles: [
       ...occupied.map(o => ({ ...o })),
@@ -495,6 +515,10 @@ export function addVillage(scene, ctx) {
     ],
     setUnreadMailboxes(homes) { mailboxes.userData.setUnreadHomes(homes); },
     setMailboxHovered(home) { mailboxes.userData.setHoveredHome(home); },
+    setOwnedMailboxes(homes, raiseHome = null) { mailboxes.userData.setOwnedHomes(homes, raiseHome); },
+    setMailboxPreview(home) { mailboxes.userData.setPreviewHome(home); },
+    mailboxSpot(home) { return mailboxes.userData.spotOf(home); },
+    get mailboxRising() { return mailboxes.userData.isRising(); },
     pickMailbox(ray) { return mailboxes.userData.pickHome(ray); },
     update(timeSeconds, camera, viewportHeight) {
       if (camera) mailboxes.userData.update(camera, viewportHeight, timeSeconds);

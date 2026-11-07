@@ -1,53 +1,69 @@
-// 눈 마을의 익명 게시판: 표면은 WebGL 안에 남고, 입력 UI는 투영된 표면 위에 표시한다.
-export function addAnonymousBoardObject(THREE, scene, { x, z, heightAt, rotation = 0 }) {
+// 모닥불 옆의 작은 나무 표지판 게시판. 메모 UI는 클릭하면 화면 가운데 홀로그램 카드로 연다.
+// 위치는 마을 배치가 끝난 뒤 place()로 정한다. 그 전에는 보이지도, 눌리지도 않는다.
+export function addAnonymousBoardObject(THREE, scene, { heightAt }) {
   const root = new THREE.Group();
-  root.position.set(x, heightAt(x, z) + 0.12, z);
-  root.rotation.y = rotation;
-  const wood = new THREE.MeshStandardMaterial({ color: 0x624532, roughness: 0.93 });
-  const trim = new THREE.MeshStandardMaterial({ color: 0x94765c, roughness: 0.87 });
-  const paper = new THREE.MeshStandardMaterial({ color: 0xece2ca, roughness: 0.97 });
+  root.visible = false;
+  const wood = new THREE.MeshStandardMaterial({ color: 0x5a3f2c, roughness: 0.93 });
+  const trim = new THREE.MeshStandardMaterial({ color: 0x8d6d52, roughness: 0.88 });
   const snow = new THREE.MeshStandardMaterial({ color: 0xdceafb, roughness: 0.95 });
-  function block(w, h, d, x, y, z, material) {
+  function block(w, h, d, x, y, z, material, rz = 0) {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
-    mesh.position.set(x, y, z); mesh.castShadow = true; mesh.receiveShadow = true;
+    mesh.position.set(x, y, z); mesh.rotation.z = rz;
+    mesh.castShadow = true; mesh.receiveShadow = true;
     root.add(mesh); return mesh;
   }
-  // 게시판은 이글루보다 높은 9.8 × 6.2m 판으로, 멀리서도 알아볼 수 있다.
-  block(9.8, 6.2, .30, 0, 4.15, 0, wood);
-  block(9.05, 5.42, .06, 0, 4.15, .184, paper);
-  block(10.05, .28, .43, 0, 7.39, .04, trim);
-  block(10.05, .27, .43, 0, .92, .04, trim);
-  block(.28, 6.55, .43, -4.93, 4.15, .04, trim);
-  block(.28, 6.55, .43, 4.93, 4.15, .04, trim);
-  block(.42, 1.65, .42, -3.85, .20, -.14, wood);
-  block(.42, 1.65, .42, 3.85, .20, -.14, wood);
-  block(10.22, .17, .53, 0, 7.59, .01, snow);
-  const face = new THREE.Mesh(new THREE.PlaneGeometry(8.95, 5.36),
-    new THREE.MeshBasicMaterial({ color: 0xf1e8d5, side: THREE.DoubleSide, transparent: true, opacity: .96 }));
-  face.position.set(0, 4.15, .23); root.add(face);
-  const titleCanvas = document.createElement('canvas');
-  titleCanvas.width = 1024; titleCanvas.height = 512;
-  const ctx = titleCanvas.getContext('2d');
-  ctx.clearRect(0, 0, 1024, 512);
-  ctx.fillStyle = '#795a47'; ctx.textAlign = 'center';
-  ctx.font = 'bold 77px sans-serif'; ctx.fillText('익명 메모 게시판', 512, 211);
-  ctx.font = '42px sans-serif'; ctx.fillText('가까이 눌러서 읽어보세요', 512, 317);
-  const title = new THREE.Mesh(new THREE.PlaneGeometry(7.7, 3.86),
-    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(titleCanvas), transparent: true, depthWrite: false }));
-  title.position.set(0, 4.15, .242); root.add(title);
-  scene.add(root); root.updateMatrixWorld(true);
+  // 높이 약 2.1m: 기둥 두 개, 판 1.6 × 0.95m, 작은 박공 지붕과 눈.
+  block(.13, 2.0, .13, -.72, 1.0, -.04, wood);
+  block(.13, 2.0, .13, .72, 1.0, -.04, wood);
+  block(1.62, .96, .08, 0, 1.36, 0, wood);
+  block(1.74, .09, .12, 0, 1.87, .01, trim);
+  block(1.74, .09, .12, 0, .85, .01, trim);
+  block(.98, .07, .5, -.43, 2.07, 0, trim, .38);
+  block(.98, .07, .5, .43, 2.07, 0, trim, -.38);
+  block(.92, .07, .44, -.43, 2.12, 0, snow, .38);
+  block(.92, .07, .44, .43, 2.12, 0, snow, -.38);
+  block(.5, .1, .5, 0, .06, 0, snow);
+
+  // 판 앞면: 나무결 위에 새긴 글씨.
+  const canvas = document.createElement('canvas');
+  canvas.width = 512; canvas.height = 304;
+  const ctx = canvas.getContext('2d');
+  for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = i % 2 ? '#6f4f37' : '#765539';
+    ctx.fillRect(0, i * 76, 512, 76);
+    ctx.fillStyle = '#4b3324'; ctx.fillRect(0, i * 76 + 74, 512, 2);
+  }
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#3a271b'; ctx.font = 'bold 74px sans-serif'; ctx.fillText('익명 메모', 258, 140);
+  ctx.fillStyle = '#f2e3c8'; ctx.fillText('익명 메모', 256, 137);
+  ctx.fillStyle = '#e4cfae'; ctx.font = '34px sans-serif'; ctx.fillText('눌러서 읽고 남기기', 256, 214);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(1.5, .89), new THREE.MeshStandardMaterial({ map: texture, roughness: .9 }));
+  face.position.set(0, 1.36, .042); root.add(face);
+
+  // 오른쪽 기둥의 작은 청록 불빛. 새 광원 없이 블룸으로만 빛난다.
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(.07, 12, 8),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(0.35, 1.9, 2.1) }));
+  glow.position.set(.72, 2.08, .1); root.add(glow);
+  block(.04, .14, .04, .72, 1.96, .1, trim);
+
+  scene.add(root);
   const targets = [];
-  root.traverse(object => { if (object.isMesh) targets.push(object); });
-  const point = (px, py, pz = .26) => root.localToWorld(new THREE.Vector3(px, py, pz));
+  const point = (px, py, pz) => root.localToWorld(new THREE.Vector3(px, py, pz));
   return {
     root, targets,
-    // UI가 게시판 종이 안쪽으로 투영되도록 좌상/우하 월드 좌표를 반환한다.
-    faceCorners() { root.updateMatrixWorld(true); return [point(-4.46, 6.76), point(4.46, 1.54)]; },
-    focusTarget() { root.updateMatrixWorld(true); return point(0, 4.15, 0); },
-    focusPosition() {
+    get placed() { return root.visible; },
+    place(x, z, rotation = 0) {
+      root.position.set(x, heightAt(x, z), z);
+      root.rotation.y = rotation;
+      root.visible = true;
       root.updateMatrixWorld(true);
-      // 전면(+Z) 방향에서 바라보는 카메라. y는 표면 중심보다 조금 높게 둔다.
-      return point(0, 4.3, 8.9);
-    }
+      targets.length = 0;
+      root.traverse(object => { if (object.isMesh) targets.push(object); });
+    },
+    focusTarget() { root.updateMatrixWorld(true); return point(0, 1.2, 0); },
+    // 게시판과 모닥불이 함께 보이도록 조금 떨어진 정면 위에서 바라본다.
+    focusPosition() { root.updateMatrixWorld(true); return point(.6, 3.2, 7.2); }
   };
 }

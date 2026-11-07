@@ -1,0 +1,22 @@
+html, body { margin: 0; height: 100%; background: #050d18; color: #eef6fb; font-family: system-ui, "Malgun Gothic", sans-serif; overflow: hidden; }
+canvas { display: block; position: fixed; inset: 0; touch-action: none; }
+.top { position: fixed; top: 20px; left: 24px; right: 24px; display: flex; justify-content: flex-end; font-size: 13px; color: #e3edf4; text-shadow: 0 1px 6px rgba(0, 0, 0, .7); pointer-events: none; }
+.bar[hidden] { display: none; }
+.bar { position: fixed; z-index: 2; left: 50%; bottom: 28px; transform: translate(-50%, 0); box-sizing: border-box; width: max-content; max-width: min(420px, calc(100vw - 40px)); color: #eef4f7; font-size: 13px; line-height: 1.5; text-align: center; }
+.bar[data-kind="hint"] { padding: 6px 0; color: #edf4f8; font-size: 12px; letter-spacing: .02em; text-shadow: 0 1px 3px #173047, 0 2px 12px rgba(5,13,24,.8); pointer-events: none; }
+.bar[data-kind="actions"], .bar[data-kind="notice"] { padding: 17px 20px 16px; border: 1px solid rgba(224,239,250,.12); border-radius: 16px; background: rgba(9,22,34,.86); box-shadow: 0 8px 32px rgba(0,7,15,.2), inset 0 1px rgba(255,255,255,.025); backdrop-filter: blur(8px); }
+.bar-message { display: block; text-wrap: balance; }
+.bar[data-kind="actions"] .bar-message { font-size: 14px; font-weight: 500; letter-spacing: -.02em; }
+.bar-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 13px; }
+.bar button { min-height: 38px; padding: 8px 13px; border: 1px solid rgba(232,242,249,.1); border-radius: 9px; background: rgba(233,243,250,.045); color: #d2dee7; font: inherit; font-weight: 500; line-height: 1.3; cursor: pointer; touch-action: manipulation; transition: transform 120ms cubic-bezier(.16,1,.3,1), background-color 120ms ease, color 120ms ease; }
+.bar button.primary { border-color: #e5edf3; background: #e5edf3; color: #152431; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.bar button:active { transform: scale(.97); }
+.bar button:focus-visible { outline: 2px solid #edf6ff; outline-offset: 4px; }
+@media (hover: hover) and (pointer: fine) { .bar button:hover { background: rgba(233,243,250,.11); color: #fff; } .bar button.primary:hover { background: #fff; color: #152431; } }
+@media (max-width: 800px) { .bar { bottom: 80px; } .bar[data-kind="actions"], .bar[data-kind="notice"] { padding: 16px 18px; } }
+@media (pointer: coarse) { .bar button { min-height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .bar button { transition: background-color 100ms linear; } .bar button:active { transform: none; } }
+.label { position: fixed; transform: translate(-50%, -100%); margin-top: -6px; padding: 1px 6px; border-radius: 5px; background: rgba(5, 13, 24, .62); font-size: 12px; color: #eef6fb; font-weight: 500; pointer-events: none; white-space: nowrap; }
+.perf { position: fixed; left: 24px; bottom: 24px; padding: 6px 10px; border-radius: 7px; background: rgba(5, 13, 24, .72); font-size: 12px; line-height: 1.5; font-variant-numeric: tabular-nums; pointer-events: none; }
+.fade { position: fixed; inset: 0; background: #120a06; opacity: 0; pointer-events: none; transition: opacity .45s ease; }
+.fallback { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 24px; text-align: center; }
