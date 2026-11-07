@@ -101,3 +101,10 @@ DB 설정이 끝났다는 이유로 테스트용 수강생이나 화면의 소�
 - observatory-access.sql 원격 적용 완료: private.chat_members의 승인된 개발팀 4명만 출입·통계 조회. can_view_observatory RPC 추가, 기존 실험/횟수/추이 함수의 권한 검사만 변경. 테이블·방문 수집·개별 본인 접속 횟수 조회 변경 없음. 기존 서버 집계식 보존.
 - verify-observatory-access.sql은 실제 계정의 익명/일반 수강생 거부·개발팀 4명 허용을 읽기만으로 검증하고 권한 컨텍스트를 rollback. 기존 집계 계산 검증 파일은 임시 시험 회원에게 트랜잭션 내 조회 권한을 부여하고 rollback.
 - 이번 변경 이후 관측소와 개발팀 대화의 권한 명단은 동일하며, 개발팀 변경 시 private.chat_members를 관리한다. 통계 제외 명단(private.visit_exclusions)은 기존 고정 명단으로 별개 유지.
+
+
+## 익명 게시판 운영자 삭제 (2026-11-07)
+
+- `village-board-moderation.sql` 원격 적용 완료: add_village_board_moderation. `village_board_posts.deleted_by` 추가, `private.can_moderate_village_board()`(개발팀 `private.chat_members` 또는 강사)와 버튼 표시용 `public.can_moderate_village_board()` 추가. `delete_village_board_post`는 작성자 또는 운영자의 소프트 삭제를 허용하고 지운 사람을 기록한다.
+- 목록 RPC는 `deleted_by`를 반환하지 않는다. 비로그인은 운영자 확인 RPC를 실행할 수 없다. 작성 횟수 제한·신고 기능은 없다(임시 게시판).
+- `verify-village-board-moderation.sql`은 임시 계정·글을 트랜잭션 안에서만 만들고 롤백한다. 일반 학생 삭제 차단, 개발팀·강사·작성자 삭제, 중복 삭제 차단, `deleted_by` 기록·비노출을 검증한다.

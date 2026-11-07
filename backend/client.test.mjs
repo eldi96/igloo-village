@@ -305,3 +305,60 @@ test('exterior light RPCs allow only warm and blue for verified students', async
  await assert.rejects(backend.setExteriorLight('pink'),/색상/);await backend.getExteriorLight();await backend.setExteriorLight('blue');
  assert.deepEqual(calls,[['get_exterior_light',undefined],['set_exterior_light',{p_color:'blue'}]]);
 });
+
+test('board moderator check uses the member RPC, needs an exact true, and propagates errors', async () => {
+  const member={id:'11111111-1111-4111-8111-111111111111',role:'student',approved:true};
+  let result=false, failure=null;
+  const calls=[];
+  const api={auth:{getUser:async()=>({data:{user:{id:member.id}}})},from(table){
+    if(table==='igloos')return {select:()=>({order:async()=>({data:homes})})};
+    if(table==='members')return {select:()=>({eq:()=>({maybeSingle:async()=>({data:member})})})};
+    throw Error('moderator roster must remain private');
+  },rpc:async(name,args)=>{calls.push([name,args]);return {data:result,error:failure};}};
+  const backend=createVillageBackend({config,loadSdk:async()=>({createClient:()=>api})});
+  assert.equal(await backend.canModerateVillageBoard(),false);
+  result='true';
+  assert.equal(await backend.canModerateVillageBoard(),false);
+  result=true;
+  assert.equal(await backend.canModerateVillageBoard(),true);
+  failure=new Error('moderator lookup failed');
+  await assert.rejects(backend.canModerateVillageBoard(),/moderator lookup failed/);
+  assert.deepEqual(calls,Array(4).fill(['can_moderate_village_board',undefined]));
+});
+
+test('recent projects read visible projects with live comment counts and validate the limit', async () => {
+  const member={id:'11111111-1111-4111-8111-111111111111',role:'student',approved:true};
+  const p1='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', p2='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const seen=[];
+  const api={auth:{getUser:async()=>({data:{user:{id:member.id}}})},storage:{from:()=>({createSignedUrl:async()=>({data:{signedUrl:'https://img'}})})},from(table){
+    if(table==='igloos')return {select:()=>({order:async()=>({data:homes})})};
+    if(table==='members')return {select:()=>({eq:()=>({maybeSingle:async()=>({data:member})})})};
+    if(table==='projects')return {select:()=>({order:(col,opt)=>{seen.push([col,opt]);return {limit:async n=>{seen.push(n);return {data:[{id:p1,igloo_id:3,image_path:null},{id:p2,igloo_id:5,image_path:'x.jpg'}]};}};}})};
+    if(table==='project_comments')return {select:()=>({in:(col,ids)=>{seen.push(ids);return {is:(c,v)=>{seen.push([c,v]);return {limit:async()=>({data:[{project_id:p2},{project_id:p2}]})};}};}})};
+    throw Error('unexpected table '+table);
+  }};
+  const backend=createVillageBackend({config,loadSdk:async()=>({createClient:()=>api})});
+  await assert.rejects(backend.listRecentProjects(0),/개수/);
+  await assert.rejects(backend.listRecentProjects(21),/개수/);
+  const rows=await backend.listRecentProjects(8);
+  assert.deepEqual(rows.map(r=>[r.id,r.comment_count,r.image_url]),[[p1,0,null],[p2,2,'https://img']]);
+  assert.deepEqual(seen,[['created_at',{ascending:false}],8,[p1,p2],['deleted_at',null]]);
+});
+
+test('improvement ideas validate input before connecting and use the member RPCs', async () => {
+  const member={id:'11111111-1111-4111-8111-111111111111',role:'student',approved:true};
+  const id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', calls=[];
+  const api={auth:{getUser:async()=>({data:{user:{id:member.id}}})},from(table){
+    if(table==='igloos')return {select:()=>({order:async()=>({data:homes})})};
+    if(table==='members')return {select:()=>({eq:()=>({maybeSingle:async()=>({data:member})})})};
+    throw Error('unexpected table '+table);
+  },rpc:async(name,args)=>{calls.push([name,args]);return {data:name==='set_improvement_idea_status'?true:name==='list_improvement_ideas'?[]:args?.p_value,error:null};}};
+  const backend=createVillageBackend({config,loadSdk:async()=>({createClient:()=>api})});
+  await assert.rejects(backend.reactImprovementIdea('bad',1),/의견/);
+  await assert.rejects(backend.reactImprovementIdea(id,2),/반응/);
+  await assert.rejects(backend.setImprovementIdeaStatus(id,'bogus'),/상태/);
+  assert.deepEqual(await backend.listImprovementIdeas(),[]);
+  assert.equal(await backend.reactImprovementIdea(id,-1),-1);
+  assert.equal(await backend.setImprovementIdeaStatus(id,'voting'),true);
+  assert.deepEqual(calls,[['list_improvement_ideas',undefined],['react_improvement_idea',{p_id:id,p_value:-1}],['set_improvement_idea_status',{p_id:id,p_status:'voting'}]]);
+});

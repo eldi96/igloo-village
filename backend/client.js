@@ -184,6 +184,11 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
       const { api } = await requireMember();
       return unwrap(await api.rpc('create_village_board_post', {p_content: text}));
     },
+    // 운영자 삭제 버튼 표시용. 실제 삭제 권한은 delete_village_board_post가 다시 검사한다.
+    async canModerateVillageBoard() {
+      const { api } = await requireMember();
+      return unwrap(await api.rpc('can_moderate_village_board')) === true;
+    },
     async deleteVillageBoardPost(id) {
       if (!UUID.test(id)) throw new Error('삭제할 메모가 올바르지 않습니다.');
       const { api } = await requireMember();
@@ -280,6 +285,36 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
         const { error } = await api.storage.from('project-images').remove(paths);
         if (error) console.warn('남은 대표 이미지 정리가 필요해요:', error.message);
       }
+    },
+    // 게시판의 새 프로젝트·피드백 요청 타일용. 공개 이글루(또는 내) 프로젝트만 RLS로 보이고, 댓글 수는 삭제되지 않은 것만 센다.
+    async listRecentProjects(limit = 8) {
+      if (!Number.isInteger(limit) || limit < 1 || limit > 20) throw new Error('조회 개수를 확인해 주세요.');
+      const { api } = await requireMember();
+      const rows = unwrap(await api.from('projects').select(PROJECT_COLUMNS).order('created_at', { ascending: false }).limit(limit));
+      const counts = new Map(rows.map(row => [row.id, 0]));
+      if (rows.length) {
+        const comments = unwrap(await api.from('project_comments').select('project_id')
+          .in('project_id', rows.map(row => row.id)).is('deleted_at', null).limit(5000));
+        for (const { project_id } of comments) counts.set(project_id, (counts.get(project_id) || 0) + 1);
+      }
+      return Promise.all(rows.map(async row => ({ ...await withImage(api, row), comment_count: counts.get(row.id) || 0 })));
+    },
+    // 서비스 개선 의견(좋아요/싫어요). 목록은 누구나, 반응은 승인 회원만, 상태 변경은 운영자만(DB가 검사).
+    async listImprovementIdeas() {
+      const api = await ready();
+      return unwrap(await api.rpc('list_improvement_ideas'));
+    },
+    async reactImprovementIdea(id, value) {
+      if (!UUID.test(id)) throw new Error('의견이 올바르지 않습니다.');
+      if (![-1, 0, 1].includes(value)) throw new Error('반응 값이 올바르지 않습니다.');
+      const { api } = await requireMember();
+      return unwrap(await api.rpc('react_improvement_idea', { p_id: id, p_value: value }));
+    },
+    async setImprovementIdeaStatus(id, status) {
+      if (!UUID.test(id)) throw new Error('의견이 올바르지 않습니다.');
+      if (!['review', 'voting', 'in_progress', 'done', 'hidden'].includes(status)) throw new Error('상태 값이 올바르지 않습니다.');
+      const { api } = await requireMember();
+      return unwrap(await api.rpc('set_improvement_idea_status', { p_id: id, p_status: status })) === true;
     },
     async getProjectFeedback(projectId) {
       if (!UUID.test(projectId)) throw new Error('존재하지 않는 프로젝트입니다.');
