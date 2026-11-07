@@ -5,8 +5,8 @@ import { mountChat } from './chat-ui.js';
 import { mountCommentMailbox } from './comment-mailbox.js?v=auto-open';
 import { createQualityControl } from './quality.js';
 import { addStatsBuilding } from './stats-building.js';
-import { mountAnonymousBoard } from './anonymous-board.js?v=update-announce';
-import { addAnonymousBoardObject } from './board-object.js?v=campfire-sign';
+import { mountAnonymousBoard } from './anonymous-board.js?v=navy-theme3';
+import { addAnonymousBoardObject } from './board-object.js?v=aframe-sign2';
 import { smooth, hash, createHeightAt, makeSnowBump, addGround } from './terrain.js?v=split1';
 import { mountTutorial } from './tutorial.js?v=3';
 
@@ -926,7 +926,9 @@ import('./village.js?v=mail-rise3')
     commentMailbox.setWorld(village);
     village.setOwnedMailboxes(ownedHomeIds);
     // 게시판은 모닥불 왼쪽 앞(옛 벤치 자리)에 세우고, 정면에서 오른쪽(모닥불 쪽)으로 약 10° 돌린다.
-    if (village.boardSpot) boardObject.place(village.boardSpot.x, village.boardSpot.z, Math.PI / 18);
+    // 게시판은 모닥불 바로 왼쪽(화면 기준)에 둔다. 모닥불 자리가 없으면 예전 벤치 자리.
+    const signSpot = village.fireSpot ? { x: village.fireSpot.x - 2.1, z: village.fireSpot.z + 0.2 } : village.boardSpot;
+    if (signSpot) boardObject.place(signSpot.x, signSpot.z, Math.PI / 14);
     import('./polar-bear.js?v=meshopt-webp')
       .then(({ addPolarBear }) => addPolarBear(scene, { obstacles: village.walkingObstacles, heightAt }))
       .then(bear => { polarBear = bear; })
@@ -1326,6 +1328,30 @@ async function syncVillage(raiseHome = null) {
 // 다른 사람이 깃발을 꽂으면 새로고침 없이 바로 보이게 한다
 villageBackend.subscribeMap(() => syncVillage().catch(() => {})).catch(() => {});
 syncVillage().catch(error => console.warn('마을 상태를 불러오지 못했어요:', error.message));
+// 이글루 창밖 풍경: 들어가기 직전, 그 이글루 바로 앞에서 광장 쪽을 바라본 실제 마을을 한 장 찍어 창 너머 배경으로 쓴다.
+let windowViewTarget = null;
+function captureWindowView(ig) {
+  windowViewTarget ??= new THREE.WebGLRenderTarget(1280, 720, { samples: 4 });
+  const from = ig.group.position;
+  const out = new THREE.Vector3(HUB.x - from.x, 0, HUB.z - from.z);
+  if (out.lengthSq() < 0.01) out.set(0, 0, 1);
+  out.normalize();
+  const eye = from.clone().addScaledVector(out, R + 0.35);
+  eye.y = heightAt(eye.x, eye.z) + 1.1;
+  const look = from.clone().addScaledVector(out, 30);
+  look.y = heightAt(look.x, look.z) + 1.6;
+  const shot = new THREE.PerspectiveCamera(50, 16 / 9, 0.1, 1400);
+  shot.position.copy(eye);
+  shot.lookAt(look);
+  const wasVisible = ig.group.visible;
+  ig.group.visible = false;
+  renderer.setRenderTarget(windowViewTarget);
+  renderer.render(scene, shot);
+  renderer.setRenderTarget(null);
+  ig.group.visible = wasVisible;
+  return windowViewTarget.texture;
+}
+
 async function enter(ig) {
   if (ig.stats) {
     focusOn(ig);
@@ -1423,17 +1449,18 @@ async function goInside(ig, projectId = null) {
     });
     room = lighthouseRoom;
   } else {
-    if (!iglooRoom) iglooRoom = (await import('./room.js?v=update-announce')).createRoom({ canvas, backend: villageBackend, onRoomPublicChange: value => { if (currentRoomIg) currentRoomIg.isPublic = value; }, onNotificationsRead: () => commentMailbox.refresh(), onExteriorLightChange: () => syncVillage().catch(() => {}) });
+    if (!iglooRoom) iglooRoom = (await import('./room.js?v=react-row-up')).createRoom({ canvas, renderer, backend: villageBackend, onRoomPublicChange: value => { if (currentRoomIg) currentRoomIg.isPublic = value; }, onNotificationsRead: () => commentMailbox.refresh(), onExteriorLightChange: () => syncVillage().catch(() => {}) });
     room = iglooRoom;
   }
   room.setAspect?.(W() / H());
+  const windowView = room === iglooRoom ? captureWindowView(ig) : null;
   if (ig.gate) ig.gate.visible = false;
   fadeThrough(() => {
     mode = 'room';
     currentRoomIg = ig;
     chat.setHidden(true);
     count.hidden = true;
-    if (room === iglooRoom) room.enter({ home: ig.home, isMine: ig.mine, isPublic: ig.isPublic, projectId, ownerName: ig.mine ? auth.member?.display_name : ig.owner });
+    if (room === iglooRoom) room.enter({ home: ig.home, isMine: ig.mine, isPublic: ig.isPublic, projectId, ownerName: ig.mine ? auth.member?.display_name : ig.owner, windowView, lightColor: ig.lightColor });
     renderPass.scene = room.scene;
     renderPass.camera = room.camera;
     showRoomActions(ig);

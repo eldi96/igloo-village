@@ -1,52 +1,74 @@
-// 모닥불 옆의 작은 나무 표지판 게시판. 메모 UI는 클릭하면 화면 가운데 홀로그램 카드로 연다.
+// 모닥불 옆의 A자 입간판 게시판. 메모 UI는 클릭하면 화면 가운데 홀로그램 카드로 연다.
+// 짙은 원목 둥근 틀 + 푸른 기 도는 흰 판, 윗면에 눈이 소복이 쌓여 있다(높이 약 1.5m).
 // 위치는 마을 배치가 끝난 뒤 place()로 정한다. 그 전에는 보이지도, 눌리지도 않는다.
 export function addAnonymousBoardObject(THREE, scene, { heightAt }) {
   const root = new THREE.Group();
   root.visible = false;
-  const wood = new THREE.MeshStandardMaterial({ color: 0x5a3f2c, roughness: 0.93 });
-  const trim = new THREE.MeshStandardMaterial({ color: 0x8d6d52, roughness: 0.88 });
-  const snow = new THREE.MeshStandardMaterial({ color: 0xdceafb, roughness: 0.95 });
-  function block(w, h, d, x, y, z, material, rz = 0) {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
-    mesh.position.set(x, y, z); mesh.rotation.z = rz;
+  const wood = new THREE.MeshStandardMaterial({ color: 0x6b4a33, roughness: 0.82 });
+  const snow = new THREE.MeshStandardMaterial({ color: 0xe6f0fb, roughness: 0.95 });
+  const R = 0.055;   // 틀 굵기(반지름)
+  // 두 점 사이를 잇는 둥근 막대
+  function bar(parent, a, b, material = wood, r = R) {
+    const from = new THREE.Vector3(...a), to = new THREE.Vector3(...b);
+    const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(r, from.distanceTo(to), 4, 10), material);
+    mesh.position.copy(from).add(to).multiplyScalar(0.5);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.clone().sub(from).normalize());
     mesh.castShadow = true; mesh.receiveShadow = true;
-    root.add(mesh); return mesh;
+    parent.add(mesh);
+    return mesh;
   }
-  // 높이 약 2.1m: 기둥 두 개, 판 1.6 × 0.95m, 작은 박공 지붕과 눈.
-  block(.13, 2.0, .13, -.72, 1.0, -.04, wood);
-  block(.13, 2.0, .13, .72, 1.0, -.04, wood);
-  block(1.62, .96, .08, 0, 1.36, 0, wood);
-  block(1.74, .09, .12, 0, 1.87, .01, trim);
-  block(1.74, .09, .12, 0, .85, .01, trim);
-  block(.98, .07, .5, -.43, 2.07, 0, trim, .38);
-  block(.98, .07, .5, .43, 2.07, 0, trim, -.38);
-  block(.92, .07, .44, -.43, 2.12, 0, snow, .38);
-  block(.92, .07, .44, .43, 2.12, 0, snow, -.38);
-  block(.5, .1, .5, 0, .06, 0, snow);
-
-  // 판 앞면: 나무결 위에 새긴 글씨.
+  const W = 0.92, TOP = 1.45, PANEL_LOW = 0.42;
+  // 앞판: 뒤로 살짝 기울어진 틀(다리 겸용 기둥 두 개, 위·아래 가로대)과 판
+  const front = new THREE.Group();
+  front.rotation.x = -0.2;
+  root.add(front);
+  bar(front, [-W / 2, 0, 0], [-W / 2, TOP, 0]);
+  bar(front, [W / 2, 0, 0], [W / 2, TOP, 0]);
+  bar(front, [-W / 2, TOP, 0], [W / 2, TOP, 0]);
+  bar(front, [-W / 2, PANEL_LOW, 0], [W / 2, PANEL_LOW, 0]);
+  // 판 앞면: 메모지가 핀으로 꽂힌 게시판 그림과 작은 제목
   const canvas = document.createElement('canvas');
-  canvas.width = 512; canvas.height = 304;
+  canvas.width = 512; canvas.height = 512;
   const ctx = canvas.getContext('2d');
-  for (let i = 0; i < 4; i++) {
-    ctx.fillStyle = i % 2 ? '#6f4f37' : '#765539';
-    ctx.fillRect(0, i * 76, 512, 76);
-    ctx.fillStyle = '#4b3324'; ctx.fillRect(0, i * 76 + 74, 512, 2);
+  ctx.fillStyle = '#eef3f8'; ctx.fillRect(0, 0, 512, 512);
+  // 제목 띠
+  ctx.fillStyle = '#2e3b48';
+  ctx.beginPath(); ctx.roundRect(126, 34, 260, 62, 31); ctx.fill();
+  ctx.fillStyle = '#eef3f8'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = 'bold 34px sans-serif'; ctx.fillText('익명 메모', 256, 66);
+  // 비스듬히 꽂힌 메모지들: 종이, 그림자, 글줄, 핀
+  const notes = [
+    [140, 200, -0.12, '#ffe7a3', '#e0574f'], [330, 190, 0.1, '#c9ecdf', '#3c7bd9'],
+    [190, 360, 0.08, '#ffd3d6', '#f0a43a'], [360, 350, -0.09, '#cfe3ff', '#e0574f']
+  ];
+  for (const [x, y, rot, paper, pin] of notes) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+    ctx.fillStyle = 'rgba(46,59,72,.16)'; ctx.fillRect(-62, -52, 132, 118);
+    ctx.fillStyle = paper; ctx.fillRect(-68, -58, 132, 118);
+    ctx.strokeStyle = 'rgba(46,59,72,.32)'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+    for (const [ly, lw] of [[-18, 84], [4, 96], [26, 62]]) { ctx.beginPath(); ctx.moveTo(-48, ly); ctx.lineTo(-48 + lw, ly); ctx.stroke(); }
+    ctx.fillStyle = pin; ctx.beginPath(); ctx.arc(-2, -50, 10, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.beginPath(); ctx.arc(-5, -53, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
   }
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#3a271b'; ctx.font = 'bold 74px sans-serif'; ctx.fillText('익명 메모', 258, 140);
-  ctx.fillStyle = '#f2e3c8'; ctx.fillText('익명 메모', 256, 137);
-  ctx.fillStyle = '#e4cfae'; ctx.font = '34px sans-serif'; ctx.fillText('눌러서 읽고 남기기', 256, 214);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  const face = new THREE.Mesh(new THREE.PlaneGeometry(1.5, .89), new THREE.MeshStandardMaterial({ map: texture, roughness: .9 }));
-  face.position.set(0, 1.36, .042); root.add(face);
-
-  // 오른쪽 기둥의 작은 청록 불빛. 새 광원 없이 블룸으로만 빛난다.
-  const glow = new THREE.Mesh(new THREE.SphereGeometry(.07, 12, 8),
-    new THREE.MeshBasicMaterial({ color: new THREE.Color(0.35, 1.9, 2.1) }));
-  glow.position.set(.72, 2.08, .1); root.add(glow);
-  block(.04, .14, .04, .72, 1.96, .1, trim);
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(W - 0.04, TOP - PANEL_LOW - 0.04, 0.04),
+    [snow, snow, snow, snow, new THREE.MeshStandardMaterial({ map: texture, roughness: 0.9 }), snow]);
+  panel.position.set(0, (TOP + PANEL_LOW) / 2, 0);
+  panel.castShadow = true;
+  front.add(panel);
+  // 윗가로대에 소복이 쌓인 눈
+  const cap = bar(front, [-W / 2 + 0.02, TOP + 0.06, 0], [W / 2 - 0.02, TOP + 0.06, 0], snow, 0.07);
+  cap.scale.set(1.35, 1, 0.75);
+  // 뒷다리: 꼭대기에서 뒤로 벌어진 두 기둥과 가운데 가로대
+  const back = new THREE.Group();
+  back.position.set(0, TOP * Math.cos(0.2), -TOP * Math.sin(0.2));
+  back.rotation.x = 0.42;
+  root.add(back);
+  bar(back, [-W / 2 + 0.06, 0, -0.02], [-W / 2 + 0.06, -TOP, -0.02]);
+  bar(back, [W / 2 - 0.06, 0, -0.02], [W / 2 - 0.06, -TOP, -0.02]);
+  bar(back, [-W / 2 + 0.06, -TOP * 0.55, -0.02], [W / 2 - 0.06, -TOP * 0.55, -0.02]);
 
   scene.add(root);
   const targets = [];
@@ -62,8 +84,8 @@ export function addAnonymousBoardObject(THREE, scene, { heightAt }) {
       targets.length = 0;
       root.traverse(object => { if (object.isMesh) targets.push(object); });
     },
-    focusTarget() { root.updateMatrixWorld(true); return point(0, 1.2, 0); },
+    focusTarget() { root.updateMatrixWorld(true); return point(0, 0.95, 0); },
     // 게시판과 모닥불이 함께 보이도록 조금 떨어진 정면 위에서 바라본다.
-    focusPosition() { root.updateMatrixWorld(true); return point(.6, 3.2, 7.2); }
+    focusPosition() { root.updateMatrixWorld(true); return point(0.8, 2.6, 5.6); }
   };
 }
