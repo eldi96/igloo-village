@@ -326,23 +326,66 @@ test('board moderator check uses the member RPC, needs an exact true, and propag
   assert.deepEqual(calls,Array(4).fill(['can_moderate_village_board',undefined]));
 });
 
-test('recent projects read visible projects with live comment counts and validate the limit', async () => {
-  const member={id:'11111111-1111-4111-8111-111111111111',role:'student',approved:true};
-  const p1='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', p2='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
-  const seen=[];
-  const api={auth:{getUser:async()=>({data:{user:{id:member.id}}})},storage:{from:()=>({createSignedUrl:async()=>({data:{signedUrl:'https://img'}})})},from(table){
-    if(table==='igloos')return {select:()=>({order:async()=>({data:homes})})};
-    if(table==='members')return {select:()=>({eq:()=>({maybeSingle:async()=>({data:member})})})};
-    if(table==='projects')return {select:()=>({order:(col,opt)=>{seen.push([col,opt]);return {limit:async n=>{seen.push(n);return {data:[{id:p1,igloo_id:3,image_path:null},{id:p2,igloo_id:5,image_path:'x.jpg'}]};}};}})};
-    if(table==='project_comments')return {select:()=>({in:(col,ids)=>{seen.push(ids);return {is:(c,v)=>{seen.push([c,v]);return {limit:async()=>({data:[{project_id:p2},{project_id:p2}]})};}};}})};
-    throw Error('unexpected table '+table);
-  }};
-  const backend=createVillageBackend({config,loadSdk:async()=>({createClient:()=>api})});
-  await assert.rejects(backend.listRecentProjects(0),/개수/);
-  await assert.rejects(backend.listRecentProjects(21),/개수/);
-  const rows=await backend.listRecentProjects(8);
-  assert.deepEqual(rows.map(r=>[r.id,r.comment_count,r.image_url]),[[p1,0,null],[p2,2,'https://img']]);
-  assert.deepEqual(seen,[['created_at',{ascending:false}],8,[p1,p2],['deleted_at',null]]);
+function projectMock({ failUpdateColumns = false } = {}) {
+  const member = { id: '11111111-1111-4111-8111-111111111111', role: 'student', approved: true };
+  const ids = { a: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', b: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', c: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' };
+  const seen = [];
+  const created = [{ id: ids.a, igloo_id: 3, image_path: null, created_at: '2026-01-03T00:00:00Z' },
+                   { id: ids.b, igloo_id: 5, image_path: 'x.jpg', created_at: '2026-01-02T00:00:00Z', announced_at: null }];
+  const announcedRows = [{ id: ids.c, igloo_id: 7, image_path: null, created_at: '2025-12-01T00:00:00Z', announced_at: '2026-01-05T00:00:00Z', update_note: '새 화면' },
+                         { id: ids.a, igloo_id: 3, image_path: null, created_at: '2026-01-03T00:00:00Z', announced_at: '2026-01-04T00:00:00Z' }];
+  const comments = [{ project_id: ids.b, created_at: '2026-01-02T05:00:00Z' }, { project_id: ids.b, created_at: '2026-01-02T06:00:00Z' },
+                    { project_id: ids.c, created_at: '2025-12-02T00:00:00Z' }, { project_id: ids.c, created_at: '2026-01-06T00:00:00Z' }];
+  const api = {
+    auth: { getUser: async () => ({ data: { user: { id: member.id } } }) },
+    storage: { from: () => ({ createSignedUrl: async () => ({ data: { signedUrl: 'https://img' } }) }) },
+    from(table) {
+      if (table === 'igloos') return { select: () => ({ order: async () => ({ data: homes }) }) };
+      if (table === 'members') return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: member }) }) }) };
+      if (table === 'projects') return { select: columns => {
+        const hasUpdates = columns.includes('announced_at'), chain = { announced: false };
+        chain.not = () => { chain.announced = true; return chain; };
+        chain.order = () => chain;
+        chain.limit = async () => {
+          seen.push([hasUpdates ? 'with-updates' : 'plain', chain.announced ? 'announced' : 'created']);
+          if (hasUpdates && failUpdateColumns) return { data: null, error: new Error('column announced_at does not exist') };
+          return { data: chain.announced ? announcedRows : created.map(row => ({ ...row })), error: null };
+        };
+        return chain;
+      } };
+      if (table === 'project_comments') return { select: () => ({ in: () => ({ is: () => ({ limit: async () => ({ data: comments }) }) }) }) };
+      throw Error('unexpected table ' + table);
+    }, rpc: async (name, args) => { seen.push([name, args]); return { data: '2026-01-07T00:00:00Z', error: null }; } };
+  return { api, ids, seen, backend: createVillageBackend({ config, loadSdk: async () => ({ createClient: () => api }) }) };
+}
+
+test('recent projects put announced updates first and count only feedback made after the last update', async () => {
+  const { backend, ids } = projectMock();
+  await assert.rejects(backend.listRecentProjects(0), /개수/);
+  await assert.rejects(backend.listRecentProjects(21), /개수/);
+  const rows = await backend.listRecentProjects(8);
+  // c는 오래된 프로젝트지만 가장 최근에 업데이트를 알렸다. a는 알린 뒤(01-04)가 아니라 등록(01-03) 기준이 아니라 알림 기준으로 정렬된다.
+  assert.deepEqual(rows.map(row => row.id), [ids.c, ids.a, ids.b]);
+  assert.deepEqual(rows.map(row => [row.comment_count, row.fresh_comment_count]), [[2, 1], [0, 0], [2, 2]]);
+  assert.equal(rows.find(row => row.id === ids.b).image_url, 'https://img');
+  assert.equal(rows[0].update_note, '새 화면');
+});
+
+test('recent projects fall back to creation order while the update columns are not in the database yet', async () => {
+  const { backend, ids, seen } = projectMock({ failUpdateColumns: true });
+  const rows = await backend.listRecentProjects(8);
+  assert.deepEqual(rows.map(row => row.id), [ids.a, ids.b]);
+  assert.deepEqual(rows.map(row => row.fresh_comment_count), [0, 2]);
+  assert.deepEqual(seen, [['with-updates', 'created'], ['plain', 'created']]);
+});
+
+test('announcing a project update validates input before connecting and sends a trimmed optional note', async () => {
+  const { backend, ids, seen } = projectMock();
+  await assert.rejects(backend.announceProjectUpdate('bad'), /프로젝트/);
+  await assert.rejects(backend.announceProjectUpdate(ids.a, '가'.repeat(121)), /120자/);
+  await backend.announceProjectUpdate(ids.a, '  새 화면  ');
+  await backend.announceProjectUpdate(ids.a);
+  assert.deepEqual(seen, [['announce_project_update', { p_id: ids.a, p_note: '새 화면' }], ['announce_project_update', { p_id: ids.a, p_note: null }]]);
 });
 
 test('improvement ideas validate input before connecting and use the member RPCs', async () => {

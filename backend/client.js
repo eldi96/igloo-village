@@ -286,18 +286,40 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
         if (error) console.warn('남은 대표 이미지 정리가 필요해요:', error.message);
       }
     },
-    // 게시판의 새 프로젝트·피드백 요청 타일용. 공개 이글루(또는 내) 프로젝트만 RLS로 보이고, 댓글 수는 삭제되지 않은 것만 센다.
+    // 게시판의 새 프로젝트·피드백 요청 타일용. 공개 이글루(또는 내) 프로젝트만 RLS로 보인다.
+    // announced_at/update_note(업데이트 알리기)는 DB 적용 전에는 없을 수 있어, 없으면 예전 방식(등록 순)으로 읽는다.
+    // comment_count = 삭제되지 않은 댓글 수, fresh_comment_count = 마지막 업데이트(없으면 등록) 이후에 달린 댓글 수.
     async listRecentProjects(limit = 8) {
       if (!Number.isInteger(limit) || limit < 1 || limit > 20) throw new Error('조회 개수를 확인해 주세요.');
       const { api } = await requireMember();
-      const rows = unwrap(await api.from('projects').select(PROJECT_COLUMNS).order('created_at', { ascending: false }).limit(limit));
-      const counts = new Map(rows.map(row => [row.id, 0]));
-      if (rows.length) {
-        const comments = unwrap(await api.from('project_comments').select('project_id')
-          .in('project_id', rows.map(row => row.id)).is('deleted_at', null).limit(5000));
-        for (const { project_id } of comments) counts.set(project_id, (counts.get(project_id) || 0) + 1);
+      const withUpdates = PROJECT_COLUMNS + ',announced_at,update_note';
+      let rows;
+      const first = await api.from('projects').select(withUpdates).order('created_at', { ascending: false }).limit(limit);
+      if (first.error) {
+        rows = unwrap(await api.from('projects').select(PROJECT_COLUMNS).order('created_at', { ascending: false }).limit(limit));
+      } else {
+        const announced = unwrap(await api.from('projects').select(withUpdates).not('announced_at', 'is', null).order('announced_at', { ascending: false }).limit(limit));
+        const known = new Set(first.data.map(row => row.id));
+        rows = [...first.data, ...announced.filter(row => !known.has(row.id))];
       }
-      return Promise.all(rows.map(async row => ({ ...await withImage(api, row), comment_count: counts.get(row.id) || 0 })));
+      const latest = row => Math.max(Date.parse(row.created_at), row.announced_at ? Date.parse(row.announced_at) : 0);
+      rows = rows.sort((a, b) => latest(b) - latest(a)).slice(0, limit);
+      const comments = rows.length ? unwrap(await api.from('project_comments').select('project_id,created_at')
+        .in('project_id', rows.map(row => row.id)).is('deleted_at', null).limit(5000)) : [];
+      return Promise.all(rows.map(async row => {
+        const mine = comments.filter(comment => comment.project_id === row.id);
+        const since = Date.parse(row.announced_at || row.created_at);
+        return { ...await withImage(api, row), comment_count: mine.length,
+          fresh_comment_count: mine.filter(comment => Date.parse(comment.created_at) > since).length };
+      }));
+    },
+    // 수정 화면의 "마을에 업데이트 알리기". 내 프로젝트만, 같은 프로젝트는 10분에 한 번(서버가 검사). 메모는 선택, 120자 이하.
+    async announceProjectUpdate(id, note = '') {
+      if (!UUID.test(id)) throw new Error('존재하지 않는 프로젝트입니다.');
+      const text = String(note ?? '').trim();
+      if (text.length > 120) throw new Error('업데이트 메모는 120자 이하로 적어 주세요.');
+      const { api } = await requireMember('student');
+      return unwrap(await api.rpc('announce_project_update', { p_id: id, p_note: text || null }));
     },
     // 서비스 개선 의견(좋아요/싫어요). 목록은 누구나, 반응은 승인 회원만, 상태 변경은 운영자만(DB가 검사).
     async listImprovementIdeas() {

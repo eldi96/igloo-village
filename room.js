@@ -39,6 +39,12 @@ const STYLE = `
   .room-form input:focus { outline: 2px solid #ffe9cf; outline-offset: 1px; }
   .room-form textarea { box-sizing: border-box; width: 100%; min-height: 90px; margin-top: 8px; padding: 12px; resize: vertical; border: 1px solid rgba(255,226,190,.26); border-radius: 10px; background: rgba(24,16,13,.26); box-shadow: inset 0 1px 3px rgba(0,0,0,.08); color: #fff6ea; font: inherit; }
   .room-form textarea:focus { outline: 2px solid #ffe9cf; outline-offset: 1px; }
+  .room-form .room-announce[hidden], .room-form .room-note[hidden] { display: none; }
+  .room-form .room-check { display: flex; align-items: center; gap: 10px; margin-top: 18px; color: #f3dcc2; font-size: 13px; cursor: pointer; }
+  .room-form .room-check input { display: inline-block; flex: none; width: 18px; height: 18px; margin: 0; accent-color: #ffe9cf; cursor: pointer; }
+  .room-form .room-note:not([hidden]) { animation: room-note-in .24s cubic-bezier(.23, 1, .32, 1); }
+  @keyframes room-note-in { from { opacity: 0; transform: translateY(-6px); } }
+  @media (prefers-reduced-motion: reduce) { .room-form .room-note { animation: none !important; } }
   .room-preview { display: block; width: 100%; max-height: 180px; object-fit: contain; margin-top: 10px; border-radius: 10px; }
   .room-shot img { display: block; width: 100%; height: 100%; object-fit: contain; }
   .room-shot p { color: #704c38; text-align: center; padding: 32px 12px; }
@@ -732,7 +738,7 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onN
   const formVeil = document.createElement('div');
   formVeil.className = 'room-ui room-veil';
   formVeil.hidden = true;
-  formVeil.innerHTML = `<form class="room-form" role="dialog" aria-modal="true" aria-labelledby="room-form-title"><h2 id="room-form-title">이 상자에 프로젝트 넣기</h2><p>직접 작성한 소개와 이미지가 프로젝트 카드에 표시돼요.</p><div class="room-form-layout"><div class="room-form-fields"><label>프로젝트 이름<input name="title" required maxlength="120" placeholder="프로젝트 이름"></label><label>프로젝트 링크<input name="link" type="text" inputmode="url" required autocomplete="off" spellcheck="false" placeholder="https://" maxlength="2048"></label><label>프로젝트 설명<textarea name="description" required maxlength="5000" placeholder="어떤 서비스인지 소개해 주세요."></textarea></label><label>사용법<textarea name="instructions" required maxlength="5000" placeholder="시작 방법과 주요 기능을 순서대로 적어 주세요."></textarea></label></div><section class="room-form-image"><label>대표 이미지<input name="image" type="file" accept="image/png,image/jpeg,image/webp" required></label><p>이미지 1장 · PNG·JPG·WebP, 최대 5MB</p><div class="room-preview-frame"><span>대표 이미지를 선택해 주세요</span><img class="room-preview" alt="선택한 대표 이미지 미리보기" hidden></div></section></div><p class="room-error" role="alert"></p><div class="room-actions"><button type="submit" class="room-btn primary">넣기</button><button type="button" class="room-btn" data-cancel>취소</button></div></form>`;
+  formVeil.innerHTML = `<form class="room-form" role="dialog" aria-modal="true" aria-labelledby="room-form-title"><h2 id="room-form-title">이 상자에 프로젝트 넣기</h2><p>직접 작성한 소개와 이미지가 프로젝트 카드에 표시돼요.</p><div class="room-form-layout"><div class="room-form-fields"><label>프로젝트 이름<input name="title" required maxlength="120" placeholder="프로젝트 이름"></label><label>프로젝트 링크<input name="link" type="text" inputmode="url" required autocomplete="off" spellcheck="false" placeholder="https://" maxlength="2048"></label><label>프로젝트 설명<textarea name="description" required maxlength="5000" placeholder="어떤 서비스인지 소개해 주세요."></textarea></label><label>사용법<textarea name="instructions" required maxlength="5000" placeholder="시작 방법과 주요 기능을 순서대로 적어 주세요."></textarea></label><div class="room-announce" hidden><label class="room-check"><input type="checkbox" name="announce"> 마을에 업데이트 알리기</label><label class="room-note" hidden>바뀐 점 (선택)<input name="note" maxlength="120" autocomplete="off" placeholder="예: 로그인 화면을 새로 만들었어요"></label></div></div><section class="room-form-image"><label>대표 이미지<input name="image" type="file" accept="image/png,image/jpeg,image/webp" required></label><p>이미지 1장 · PNG·JPG·WebP, 최대 5MB</p><div class="room-preview-frame"><span>대표 이미지를 선택해 주세요</span><img class="room-preview" alt="선택한 대표 이미지 미리보기" hidden></div></section></div><p class="room-error" role="alert"></p><div class="room-actions"><button type="submit" class="room-btn primary">넣기</button><button type="button" class="room-btn" data-cancel>취소</button></div></form>`;
   const card = document.createElement('aside');
   card.className = 'room-ui room-card';
   card.hidden = true;
@@ -820,6 +826,10 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onN
   }
   const formError = form.querySelector('.room-error');
   const submitBtn = form.querySelector('[type=submit]');
+  // 수정할 때만 보이는 "마을에 업데이트 알리기"(광장 보드의 새 프로젝트 칸에 다시 올라간다). 체크하면 바뀐 점 메모(선택)가 열린다.
+  const announceBox = form.querySelector('.room-announce'), announceInput = form.elements.announce;
+  const noteLabel = form.querySelector('.room-note'), noteInput = form.elements.note;
+  announceInput.addEventListener('change', () => { noteLabel.hidden = !announceInput.checked; if (announceInput.checked) noteInput.focus(); });
 
   // 방 안에서 자유롭게 이동하되 바닥과 얼음 돔 밖으로 나가지 않는다.
   const START = { yaw: ROOM_YAW, pitch: 0.26, radius: 9 };
@@ -984,6 +994,7 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onN
       if (project.image_url) { preview.src = project.image_url; preview.hidden = false; }
     }
     formError.textContent = '';
+    announceBox.hidden = !project; announceInput.checked = false; noteLabel.hidden = true; noteInput.value = '';
     submitBtn.disabled = saving;
     formVeil.hidden = false;
     linkInput.focus();
@@ -1045,8 +1056,18 @@ export function createRoom({ canvas, backend, onRoomPublicChange = () => {}, onN
       if (token !== loadToken) return;
       const project = editing ? await backend.updateProject(editing.id, values) : await backend.addProject(targetHome, values);
       if (token !== loadToken) return;
+      // 수정은 이미 저장된 뒤라, 알림만 실패해도 수정 내용은 그대로 둔다.
+      let announceError = null;
+      if (editing && announceInput.checked) {
+        try { await backend.announceProjectUpdate(editing.id, noteInput.value); } catch (error) { announceError = error; }
+      }
       const list = filled().map(s => s.project);
       applyProjects(editing ? list.map(item => item.id === project.id ? project : item) : [...list, project]);
+      if (announceError) {
+        formSlot = slots.find(s => s.project?.id === project.id) || formSlot;
+        formError.textContent = `수정은 저장됐지만 업데이트 알림은 보내지 못했어요. 다시 저장하면 알림을 다시 시도해요. (${failText(announceError)})`;
+        return;
+      }
       if (!editing) cardThemes.projectPosted(previousThemeUnlock);
       if (!editing) exteriorLight.refresh();
       saving = false;

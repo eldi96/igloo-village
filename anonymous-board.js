@@ -7,12 +7,15 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
     .ab-surface{position:fixed;left:50%;top:50%;z-index:1800;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;
       width:min(1200px,calc(100vw - 40px));height:min(840px,calc(100dvh - 48px));padding:18px;
       color:#3c3236;font:inherit;font-size:16px;border-radius:36px;
-      background:linear-gradient(150deg,rgba(255,247,244,.16),rgba(247,226,224,.11) 55%,rgba(240,226,236,.13));
-      -webkit-backdrop-filter:blur(12px) saturate(140%);backdrop-filter:blur(12px) saturate(140%);
+      background:linear-gradient(150deg,rgba(255,247,244,.07),rgba(247,226,224,.04) 55%,rgba(240,226,236,.05));
+      /* 바깥 패널에는 backdrop-filter를 쓰지 않는다: 겹치면 안쪽 칸의 블러가 마을을 못 보고 작동하지 않는다. */
       border:1px solid rgba(255,255,255,.8);
       box-shadow:inset 0 1px 0 #fff,0 30px 80px rgba(60,30,40,.26),0 4px 14px rgba(60,30,40,.1);
       transform:translate(-50%,-50%);opacity:1;transition:opacity .28s cubic-bezier(.23,1,.32,1),transform .28s cubic-bezier(.23,1,.32,1)}
-    .ab-surface:not(.ab-ready){opacity:0;transform:translate(-50%,-47%) scale(.97);pointer-events:none}
+    .ab-surface:not(.ab-ready){opacity:0;transform:translate(-50%,-47%) scale(.97)}
+    /* 바깥 틀과 칸 사이 빈 곳은 마우스를 통과시켜 마을 화면이 반응하게 하고, 칸과 돌아가기 버튼만 입력을 받는다. */
+    .ab-surface{pointer-events:none}
+    .ab-surface.ab-ready .ab-tile,.ab-surface.ab-ready .ab-top button{pointer-events:auto}
     .ab-surface[hidden]{display:none}
     .ab-surface *{box-sizing:border-box;scrollbar-width:thin;scrollbar-color:#e3c9c2 transparent}
     .ab-surface button{font:inherit;cursor:pointer;border:1px solid rgba(230,200,195,.9);border-radius:999px;background:rgba(255,255,255,.75);
@@ -25,8 +28,8 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
     .ab-bento{flex:1;min-height:0;display:grid;gap:14px;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);grid-template-rows:minmax(0,1.05fr) minmax(0,1.35fr) minmax(0,1.2fr);
       grid-template-areas:"new chat" "ask chat" "idea chat"}
     .ab-tile{position:relative;min-height:0;min-width:0;overflow:hidden;border-radius:28px;container-type:size;
-      background:linear-gradient(160deg,rgba(255,255,255,.26),rgba(255,248,246,.13));
-      -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+      background:linear-gradient(160deg,rgba(255,255,255,.72),rgba(255,248,246,.6));
+      -webkit-backdrop-filter:blur(18px) saturate(130%);backdrop-filter:blur(18px) saturate(130%);
       border:1px solid rgba(255,255,255,.7);box-shadow:inset 0 1px 0 #fff,0 10px 30px rgba(190,140,140,.16)}
     .ab-tile-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:14px 20px 0}
     .ab-label{font-size:.7em;letter-spacing:.2em;text-transform:uppercase;color:#b59a93}
@@ -48,6 +51,7 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
     .ab-art img{width:100%;height:100%;object-fit:cover;display:block}
     .ab-slide-body{min-width:0;display:flex;flex-direction:column;gap:4px}
     .ab-owner{font-size:.78em;color:#b0877f;font-weight:600}
+    .ab-upd{display:inline-block;margin:0 2px 0 4px;padding:1px 8px;border-radius:999px;background:#ece5f6;color:#6f5f92;font-size:.92em;font-weight:650}
     .ab-slide-body h4{margin:0;font-size:1.25em;line-height:1.2;color:#2f2629;overflow-wrap:anywhere;
       display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
     .ab-slide-body p{margin:0;font-size:.88em;line-height:1.55;color:#7a6669;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
@@ -210,6 +214,10 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
   let onExit = () => {};
   const showError = message => { error.hidden = !message; error.textContent = message || ''; };
   const dateLabel = iso => new Date(iso).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
+  const ago = iso => {
+    const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+    return minutes < 1 ? '방금' : minutes < 60 ? `${minutes}분 전` : minutes < 1440 ? `${Math.floor(minutes / 60)}시간 전` : `${Math.floor(minutes / 1440)}일 전`;
+  };
   const order = (a, b) => (Date.parse(a.created_at) - Date.parse(b.created_at)) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   const nearBottom = () => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 90;
   const toBottom = () => { feed.scrollTop = feed.scrollHeight; unseen = 0; newPill.hidden = true; };
@@ -262,8 +270,12 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
       if (project.image_url) { const img = el('img'); img.src = project.image_url; img.alt = ''; img.loading = 'lazy'; art.append(img); }
       const body = el('div', 'ab-slide-body');
       const go = el('button', null, '보러 가기'); go.type = 'button'; go.addEventListener('click', () => visit(project));
-      body.append(el('span', 'ab-owner', ownerLabel(project)), el('h4', null, project.title));
-      if (project.description) body.append(el('p', null, project.description));
+      // 업데이트를 알린 프로젝트는 "업데이트" 태그와 알린 시각, 바뀐 점 메모(있으면)를 보여 준다.
+      const owner = el('span', 'ab-owner', ownerLabel(project));
+      if (project.announced_at) owner.append(' ', el('span', 'ab-upd', '업데이트'), ' ' + ago(project.announced_at));
+      body.append(owner, el('h4', null, project.title));
+      const blurb = project.announced_at && project.update_note ? '바뀐 점 · ' + project.update_note : project.description;
+      if (blurb) body.append(el('p', null, blurb));
       body.append(go);
       slide.append(art, body); slides.append(slide);
       art.addEventListener('click', () => visit(project)); // 이미지를 눌렀을 때만 이동한다(글자·빈 공간은 이동하지 않는다)
@@ -273,13 +285,14 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
     });
     showSlide(0); startSlides();
     // 최신 순(조회가 최신 순)으로 댓글이 아직 없는 프로젝트 3개.
-    const waiting = projects.filter(project => !project.comment_count).slice(0, 3);
+    // 업데이트를 알린 프로젝트는 그 뒤에 달린 댓글만 센다(fresh_comment_count).
+    const waiting = projects.filter(project => !project.fresh_comment_count).slice(0, 3);
     if (!waiting.length) askList.append(el('p', 'ab-note', '모든 프로젝트에 피드백이 달렸어요. 고마워요!'));
     waiting.forEach((project, i) => {
       const row = el('div', 'ab-ask is-zero');
       const dot = el('i'); dot.style.background = ASK_COLORS[i % ASK_COLORS.length];
       const text = el('div'); text.append(el('b', null, project.title),
-        el('small', null, `${ownerLabel(project)} · 첫 피드백을 기다려요`));
+        el('small', null, `${ownerLabel(project)} · ${project.announced_at ? '업데이트 후 첫 피드백을 기다려요' : '첫 피드백을 기다려요'}`));
       const go = el('button', null, '피드백 남기기'); go.type = 'button'; go.addEventListener('click', () => visit(project));
       row.append(dot, text, go); askList.append(row);
     });
@@ -296,8 +309,14 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
     try {
       const projects = await backend.listRecentProjects(12);
       if (opened && generation === token) renderProjects(projects);
-    } catch {
-      if (opened && generation === token) { slides.replaceChildren(el('p', 'ab-note', '프로젝트를 불러오지 못했어요.')); askList.replaceChildren(); dots.replaceChildren(); }
+    } catch (err) {
+      console.warn('광장 보드: 프로젝트를 불러오지 못했어요:', err);
+      if (opened && generation === token) {
+        const retry = el('button', null, '다시 시도'); retry.type = 'button'; retry.addEventListener('click', loadProjects);
+        const note = el('div', 'ab-note', '프로젝트를 불러오지 못했어요. '); note.append(retry);
+        slides.replaceChildren(note); dots.replaceChildren();
+        askList.replaceChildren(el('p', 'ab-note', '프로젝트를 불러오지 못해 표시할 수 없어요.'));
+      }
     }
   }
   newTile.addEventListener('pointerenter', () => { slidePaused = true; });
@@ -371,10 +390,16 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
   }
 
   // ── 익명 채팅 ──
+  let lastApproved = null;
   function refreshAccess() {
     const allowed = Boolean(getMember()?.approved);
     form.hidden = !allowed; login.hidden = allowed;
     if (!allowed && opened) input.value = '';
+    // 열려 있는 동안 로그인·승인 상태가 바뀌면 왼쪽 칸도 새 상태로 다시 불러온다.
+    if (opened && lastApproved !== null && lastApproved !== allowed) {
+      refreshModerator().then(() => { if (opened) { loadProjects(); loadIdeas(); } });
+    }
+    lastApproved = allowed;
   }
   // 운영자 여부는 열 때마다 다시 확인한다. 실패하면 일반 사용자처럼 보인다.
   async function refreshModerator() {
@@ -485,7 +510,7 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
     posts = []; hasOlder = false; unseen = 0; newPill.hidden = true; slidePaused = false;
     pollCount = 0; ideas = [];
     render(); live.classList.add('is-off'); live.textContent = '연결 중';
-    refreshAccess(); loadProjects();
+    lastApproved = null; refreshAccess(); loadProjects();
     ideaList.replaceChildren(el('p', 'ab-note', '불러오는 중…'));
     refreshModerator().then(() => { if (opened) { loadLatest(); loadIdeas(); startPolling(); } });
     $('.ab-back').focus();

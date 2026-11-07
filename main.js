@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { villageBackend } from './backend/client.js?v=bento-ideas';
+import { villageBackend } from './backend/client.js?v=update-announce';
 import { mountAuth } from './auth-ui.js';
 import { mountChat } from './chat-ui.js';
 import { mountCommentMailbox } from './comment-mailbox.js?v=auto-open';
 import { createQualityControl } from './quality.js';
 import { addStatsBuilding } from './stats-building.js';
-import { mountAnonymousBoard } from './anonymous-board.js?v=bento-ideas8';
+import { mountAnonymousBoard } from './anonymous-board.js?v=update-announce';
 import { addAnonymousBoardObject } from './board-object.js?v=campfire-sign';
 import { smooth, hash, createHeightAt, makeSnowBump, addGround } from './terrain.js?v=split1';
 import { mountTutorial } from './tutorial.js?v=3';
@@ -506,7 +506,7 @@ const makeFlag = (ig, color) => {
   flags.push({ time });
   return g;
 };
-// 이름표: 닫힌 이글루는 자물쇠, 내 이글루는 색을 바꿔 '내 이글루'로 표시한다. 긴 이름은 말줄임.
+// 이름표: 닫힌 이글루는 자물쇠, 내 이글루는 색을 바꿔 '내 이글루'로 표시한다. 이름은 자르지 않는다.
 const LOCK_ICON = '<svg class="label-lock" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><rect x="2.2" y="5.3" width="7.6" height="5.2" rx="1.4"/><path d="M4 5.3V3.9a2 2 0 0 1 4 0v1.4"/></svg>';
 function addLabel(ig, text) {
   let el = ig.label;
@@ -1027,6 +1027,9 @@ setBar(IDLE, [], 'hint');
 
 const ray = new THREE.Raycaster(), pointer = new THREE.Vector2(2, 2), hits = igloos.map(i => i.hit);
 let mode = 'map', hovered = null, mine = null, mx = 0, my = 0, raising = null;
+// 게시판이 열려 있을 때 마우스가 칸 밖(마을이 보이는 곳)에 있으면 카메라가 마우스를 따라 조금 움직인다.
+let overBoard = true;
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 // 작은 표지판 게시판. 자리는 마을 배치(village.boardSpot)가 끝난 뒤 정한다.
 const boardObject = addAnonymousBoardObject(THREE, scene, { heightAt });
 const homeIgloo = id => igloos.find(ig => ig.home === id && !ig.house && !ig.stats);
@@ -1158,6 +1161,7 @@ canvas.addEventListener('pointercancel', release);
 addEventListener('pointermove', e => {
   pointer.set(e.clientX / W() * 2 - 1, -(e.clientY / H()) * 2 + 1);
   mx = pointer.x; my = pointer.y;
+  overBoard = e.pointerType !== 'mouse' || Boolean(e.target?.closest?.('.ab-tile, .ab-top button'));
   if (mode === 'room' && room === lighthouseRoom) {
     const hoverMap = !mailComposer?.isOpen() && lighthouseRoom.pickAction(pointer) === 'mail';
     lighthouseRoom.setMapHovered(hoverMap);
@@ -1419,7 +1423,7 @@ async function goInside(ig, projectId = null) {
     });
     room = lighthouseRoom;
   } else {
-    if (!iglooRoom) iglooRoom = (await import('./room.js?v=lavender-light')).createRoom({ canvas, backend: villageBackend, onRoomPublicChange: value => { if (currentRoomIg) currentRoomIg.isPublic = value; }, onNotificationsRead: () => commentMailbox.refresh(), onExteriorLightChange: () => syncVillage().catch(() => {}) });
+    if (!iglooRoom) iglooRoom = (await import('./room.js?v=update-announce')).createRoom({ canvas, backend: villageBackend, onRoomPublicChange: value => { if (currentRoomIg) currentRoomIg.isPublic = value; }, onNotificationsRead: () => commentMailbox.refresh(), onExteriorLightChange: () => syncVillage().catch(() => {}) });
     room = iglooRoom;
   }
   room.setAspect?.(W() / H());
@@ -1504,7 +1508,9 @@ function frame() {
 
   const k = 1 - Math.exp(-dt * (mode === 'map' ? 7 : 2.4));
   const still = mode !== 'map' || touches.size > 0;
-  const px = still ? 0 : mx * 0.025 * view.d, py = still ? 0 : my * 0.012 * view.d;
+  // 게시판 옆으로 마우스를 빼면 마을이 살짝(좌우 약 0.8m, 상하 약 0.4m) 따라 움직이고, 칸 위로 돌아오면 천천히 제자리로 간다.
+  const boardPeek = mode === 'board' && !overBoard && touches.size === 0 && !reduceMotion.matches;
+  const px = boardPeek ? mx * 0.8 : still ? 0 : mx * 0.025 * view.d, py = boardPeek ? my * 0.4 : still ? 0 : my * 0.012 * view.d;
   camera.position.lerp(v.set(camPos.x + px, camPos.y + py, camPos.z), k);
   lookNow.lerp(camLook, k);
   camera.lookAt(lookNow);
@@ -1569,10 +1575,10 @@ function frame() {
       ripple.material.opacity = 0.46 * fadeIn * Math.pow(1 - phase, 1.7);
     });
   }
-  // 멀리 볼수록 이름표를 살짝 작고 흐리게 해 겹침을 줄인다(내 이글루는 항상 선명).
+  // 멀리 볼수록 이름표를 조금만 작게 한다. 멀리서도 읽혀야 해서 흐리게 하지는 않는다.
   if (mode === 'map') {
     const near = closeness();
-    const labelScale = (0.82 + 0.18 * near).toFixed(3), labelAlpha = (0.86 + 0.14 * near).toFixed(3);
+    const labelScale = (0.92 + 0.08 * near).toFixed(3), labelAlpha = '1';
     if (labelScale !== lastLabelScale) { document.documentElement.style.setProperty('--label-scale', labelScale); lastLabelScale = labelScale; }
     if (labelAlpha !== lastLabelAlpha) { document.documentElement.style.setProperty('--label-alpha', labelAlpha); lastLabelAlpha = labelAlpha; }
   }

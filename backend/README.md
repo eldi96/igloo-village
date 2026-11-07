@@ -108,3 +108,9 @@ DB 설정이 끝났다는 이유로 테스트용 수강생이나 화면의 소�
 - `village-board-moderation.sql` 원격 적용 완료: add_village_board_moderation. `village_board_posts.deleted_by` 추가, `private.can_moderate_village_board()`(개발팀 `private.chat_members` 또는 강사)와 버튼 표시용 `public.can_moderate_village_board()` 추가. `delete_village_board_post`는 작성자 또는 운영자의 소프트 삭제를 허용하고 지운 사람을 기록한다.
 - 목록 RPC는 `deleted_by`를 반환하지 않는다. 비로그인은 운영자 확인 RPC를 실행할 수 없다. 작성 횟수 제한·신고 기능은 없다(임시 게시판).
 - `verify-village-board-moderation.sql`은 임시 계정·글을 트랜잭션 안에서만 만들고 롤백한다. 일반 학생 삭제 차단, 개발팀·강사·작성자 삭제, 중복 삭제 차단, `deleted_by` 기록·비노출을 검증한다.
+
+
+## 프로젝트 업데이트 알리기 (2026-11-07, 원격 적용 완료)
+
+- `project-updates.sql`: `projects.announced_at`, `projects.update_note`(120자 이하) 추가와 `announce_project_update(p_id, p_note)` RPC. 내 프로젝트만 알릴 수 있고 같은 프로젝트는 10분에 한 번, 시간은 서버가 정한다. **원격 적용 완료**(마이그레이션 add_project_update_announce). `verify-project-updates.sql`(임시 계정·프로젝트, 전부 롤백) 시험 통과.
+- 클라이언트는 열이 없는 DB에서도 광장 보드가 등록 순으로 동작하도록 자동으로 되돌아간다(`listRecentProjects`).
