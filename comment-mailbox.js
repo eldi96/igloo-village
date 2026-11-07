@@ -1,5 +1,5 @@
 // 점등할 이글루 ID는 모두 조회하고, 알림 내용은 수신자 본인만 읽는다.
-export function mountCommentMailbox(backend, { onOpen, onLightChange = () => {} }) {
+export function mountCommentMailbox(backend, { onOpen, onLightChange = () => {}, canAutoOpen = () => true }) {
   const style = document.createElement('style');
   style.textContent = `
 
@@ -40,6 +40,8 @@ export function mountCommentMailbox(backend, { onOpen, onLightChange = () => {} 
   panel.querySelector('button').onclick = () => { panel.hidden = true; };
   panel.onkeydown = event => { if (event.key === 'Escape') { panel.hidden = true; event.stopPropagation(); } };
   let userId = null, home = null, generation = 0, stop = null, world = null, rows = [], request = 0, glowRequest = 0, disposed = false, unreadHomes = [];
+  // 이미 보여 준 알림 ID. 사용자가 닫은 뒤에는 새 알림이 올 때만 다시 연다.
+  let shown = new Set(), autoPending = false;
   function light() { world?.setUnreadMailboxes(unreadHomes); onLightChange(); }
   function paint() {
     list.replaceChildren();
@@ -81,6 +83,10 @@ export function mountCommentMailbox(backend, { onOpen, onLightChange = () => {} 
       const next = await backend.getCommentNotifications();
       if (token !== generation || seq !== request) return;
       rows = next; paint();
+      // 새 댓글 알림이 있으면 우편함을 누르지 않아도 왼쪽 위 카드를 연다(포커스는 옮기지 않는다).
+      if (rows.some(row => !shown.has(row.id))) autoPending = true;
+      rows.forEach(row => shown.add(row.id));
+      if (autoPending && home !== null && canAutoOpen()) { autoPending = false; panel.hidden = false; }
     } catch { if (token === generation && seq === request) status.textContent = '알림을 불러오지 못했어요. 잠시 후 우편함을 다시 열어 주세요.'; }
   }
   async function setAccess(member, nextHome) {
@@ -88,7 +94,7 @@ export function mountCommentMailbox(backend, { onOpen, onLightChange = () => {} 
     const next = member?.approved ? member.id : null;
     if (next === userId) return;
     const token = ++generation; request++;
-    stop?.(); stop = null; userId = next; rows = []; panel.hidden = true; light(); paint();
+    stop?.(); stop = null; userId = next; rows = []; shown = new Set(); autoPending = false; panel.hidden = true; light(); paint();
     refresh();
     if (!userId) return;
     try {

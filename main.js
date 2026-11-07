@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import { villageBackend } from './backend/client.js?v=bento-ideas';
 import { mountAuth } from './auth-ui.js';
 import { mountChat } from './chat-ui.js';
-import { mountCommentMailbox } from './comment-mailbox.js?v=glass-mail';
+import { mountCommentMailbox } from './comment-mailbox.js?v=auto-open';
 import { createQualityControl } from './quality.js';
 import { addStatsBuilding } from './stats-building.js';
-import { mountAnonymousBoard } from './anonymous-board.js?v=bento-ideas7';
+import { mountAnonymousBoard } from './anonymous-board.js?v=bento-ideas8';
 import { addAnonymousBoardObject } from './board-object.js?v=campfire-sign';
 import { smooth, hash, createHeightAt, makeSnowBump, addGround } from './terrain.js?v=split1';
 import { mountTutorial } from './tutorial.js?v=3';
@@ -47,7 +47,7 @@ const auth = mountAuth(villageBackend, {
   }
 });
 const chat = mountChat(villageBackend);
-const commentMailbox = mountCommentMailbox(villageBackend, { onOpen: projectId => { if (mine) { focusOn(mine); goInside(mine, projectId); } }, onLightChange: () => { renderer.shadowMap.needsUpdate = true; } });
+const commentMailbox = mountCommentMailbox(villageBackend, { canAutoOpen: () => mode === 'map' || mode === 'in', onOpen: projectId => { if (mine) { focusOn(mine); goInside(mine, projectId); } }, onLightChange: () => { renderer.shadowMap.needsUpdate = true; } });
 
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -506,12 +506,19 @@ const makeFlag = (ig, color) => {
   flags.push({ time });
   return g;
 };
+// 이름표: 닫힌 이글루는 자물쇠, 내 이글루는 색을 바꿔 '내 이글루'로 표시한다. 긴 이름은 말줄임.
+const LOCK_ICON = '<svg class="label-lock" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><rect x="2.2" y="5.3" width="7.6" height="5.2" rx="1.4"/><path d="M4 5.3V3.9a2 2 0 0 1 4 0v1.4"/></svg>';
 function addLabel(ig, text) {
-  const el = ig.label || document.createElement('div');
-  el.className = 'label';
-  el.textContent = text;
-  document.body.appendChild(el);
-  ig.label = el;
+  let el = ig.label;
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'label';
+    el.innerHTML = LOCK_ICON + '<span class="label-name"></span>';
+    document.body.appendChild(el);
+    ig.label = el;
+  }
+  el.querySelector('.label-name').textContent = text;
+  el.classList.toggle('is-mine', Boolean(ig.mine));
 }
 
 // 집마다 같은 부품은 한 번에 그려 드로우 콜을 줄인다. null을 넣으면 그 집의 부품을 숨긴다
@@ -1283,7 +1290,7 @@ async function syncVillage(raiseHome = null) {
         }
         renderer.shadowMap.needsUpdate = true;
       }
-      const label = nameOf.get(ownerId) || (ig.mine ? '내 이글루' : null);
+      const label = ig.mine ? '내 이글루' : nameOf.get(ownerId) || null;
       if (label) addLabel(ig, label);
       else if (ig.label) {
         ig.label.remove();
@@ -1455,6 +1462,7 @@ addEventListener('keydown', e => { if (e.key === 'Escape' && mode === 'in') leav
 
 const v = new THREE.Vector3();
 const clock = new THREE.Clock();
+let lastLabelScale = '', lastLabelAlpha = '';
 renderer.info.autoReset = false;
 function frame() {
   // 프레임이 낮은 기기에서도 카메라 이동 시간이 늘어지지 않게 상한을 넉넉히 둔다
@@ -1561,11 +1569,20 @@ function frame() {
       ripple.material.opacity = 0.46 * fadeIn * Math.pow(1 - phase, 1.7);
     });
   }
+  // 멀리 볼수록 이름표를 살짝 작고 흐리게 해 겹침을 줄인다(내 이글루는 항상 선명).
+  if (mode === 'map') {
+    const near = closeness();
+    const labelScale = (0.82 + 0.18 * near).toFixed(3), labelAlpha = (0.86 + 0.14 * near).toFixed(3);
+    if (labelScale !== lastLabelScale) { document.documentElement.style.setProperty('--label-scale', labelScale); lastLabelScale = labelScale; }
+    if (labelAlpha !== lastLabelAlpha) { document.documentElement.style.setProperty('--label-alpha', labelAlpha); lastLabelAlpha = labelAlpha; }
+  }
   igloos.forEach(ig => {
     if (!ig.label) return;
+    const closed = !ig.isPublic;
+    if (ig.labelClosed !== closed) { ig.labelClosed = closed; ig.label.classList.toggle('is-closed', closed); }
     v.copy(ig.labelAnchor).project(camera);
     const show = mode === 'map' && v.z < 1;
-    ig.label.style.display = show ? 'block' : 'none';
+    ig.label.style.display = show ? '' : 'none';
     if (show) {
       ig.label.style.left = (v.x * .5 + .5) * W() + 'px';
       ig.label.style.top = (-v.y * .5 + .5) * H() + 'px';

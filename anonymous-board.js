@@ -40,7 +40,8 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
       opacity:0;transform:translate3d(100%,0,0);transition:transform 1s cubic-bezier(.45,.05,.2,1),opacity .6s ease-out;pointer-events:none}
     /* 옆으로 미는 슬라이드: 나가는 카드와 들어오는 카드가 동시에 같은 방향으로 움직인다(left=지나간 카드, right=다음 카드). */
     .ab-slide[data-pos="left"]{transform:translate3d(-100%,0,0)}
-    .ab-slide[data-pos="center"]{opacity:1;transform:none;pointer-events:auto;cursor:pointer}
+    .ab-slide[data-pos="center"]{opacity:1;transform:none;pointer-events:auto}
+    .ab-slide[data-pos="center"] .ab-art{cursor:pointer}
     .ab-slide.is-snap{transition:none}
     .ab-art{flex:none;width:92px;height:92px;border-radius:22px;overflow:hidden;
       background:linear-gradient(145deg,#fff3ef,#f5c9c6 55%,#e9a9ae);box-shadow:0 10px 24px rgba(220,140,150,.3)}
@@ -155,7 +156,7 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
       .ab-surface .ab-more:hover:not(:disabled){background:transparent;box-shadow:none;transform:none;text-decoration:underline}
       .ab-surface .ab-new:hover:not(:disabled){background:#2c2427}
       .ab-surface .ab-submit:hover:not(:disabled){background:linear-gradient(135deg,#e39693,#e6a87c)}
-      .ab-slide[data-pos="center"]:hover .ab-art{transform:scale(1.03)}
+      .ab-slide[data-pos="center"] .ab-art:hover{transform:scale(1.03)}
     }
     .ab-surface button:active:not(:disabled){transform:scale(.97)}
     .ab-surface .ab-dots button:active:not(:disabled){transform:none}
@@ -260,12 +261,12 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
       const art = el('div', 'ab-art');
       if (project.image_url) { const img = el('img'); img.src = project.image_url; img.alt = ''; img.loading = 'lazy'; art.append(img); }
       const body = el('div', 'ab-slide-body');
-      const go = el('button', null, '보러 가기'); go.type = 'button'; // 클릭은 아래 slide 핸들러가 처리한다(키보드 Enter도 버튼에서 올라온다)
+      const go = el('button', null, '보러 가기'); go.type = 'button'; go.addEventListener('click', () => visit(project));
       body.append(el('span', 'ab-owner', ownerLabel(project)), el('h4', null, project.title));
       if (project.description) body.append(el('p', null, project.description));
       body.append(go);
       slide.append(art, body); slides.append(slide);
-      slide.addEventListener('click', () => visit(project));
+      art.addEventListener('click', () => visit(project)); // 이미지를 눌렀을 때만 이동한다(글자·빈 공간은 이동하지 않는다)
       const dot = el('button'); dot.type = 'button'; dot.setAttribute('aria-label', `${i + 1}번째 프로젝트 보기`);
       dot.addEventListener('click', () => { if (i !== slideIndex) showSlide(i, i > slideIndex ? 1 : -1); startSlides(); });
       dots.append(dot);
