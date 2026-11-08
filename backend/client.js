@@ -6,6 +6,9 @@ const HOME_COLUMNS = 'id,owner_id,is_public,claimed_at,latest_project_at,exterio
 const PROJECT_COLUMNS = 'id,igloo_id,owner_id,title,description,url,instructions,image_path,created_at';
 const MAIL_COLUMNS = 'id,sender_id,recipient_id,body,link,created_at,read_at';
 const CHAT_COLUMNS = 'id,sender_id,body,created_at';
+const MATERIAL_COLUMNS = 'id,category,title,description,url,file_path,file_type,created_at,updated_at';
+const CATEGORY_ID = /^[a-z0-9-]{1,40}$/;
+const MATERIAL_TYPES = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Supabase 로그인은 이메일 형식을 요구한다. 아이디를 메일이 오가지 않는 주소로 바꿔 쓴다.
@@ -71,7 +74,29 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
     if (error) console.warn('대표 이미지를 불러오지 못했어요:', error.message);
     return { ...row, image_url: data?.signedUrl || null };
   }
+  async function withMaterialFile(api, row) {
+    if (!row.file_path) return { ...row, file_url: null };
+    const { data, error } = await api.storage.from('instructor-materials').createSignedUrl(row.file_path, 604800);
+    if (error) console.warn('자료 파일 주소를 만들지 못했어요:', error.message);
+    return { ...row, file_url: data?.signedUrl || null };
+  }
+  const checkMaterial = ({ category, title, description = '', url = '', file = null, needSource }) => {
+    if (!CATEGORY_ID.test(String(category ?? ''))) throw new Error('분류를 골라주세요.');
+    const name = String(title ?? '').trim();
+    if (!name || name.length > 120) throw new Error('제목은 1~120자로 입력해주세요.');
+    const text = String(description ?? '').trim();
+    if (text.length > 2000) throw new Error('설명은 2000자까지 쓸 수 있어요.');
+    if (file && (!(file instanceof Blob) || !MATERIAL_TYPES[file.type] || file.size > 20 * 1024 * 1024)) throw new Error('20MB 이하의 PDF·JPEG·PNG·WebP 파일만 올릴 수 있어요.');
+    const link = file ? '' : checkLink(url, !needSource);
+    return { category, title: name, description: text, url: link || null };
+  };
   async function ready() { await connect(); return client; }
+  // 자료보관함 담당: 강사 계정 또는 private.material_editors 명단. 실제 권한은 RLS가 다시 검사한다.
+  async function requireMaterialEditor() {
+    const found = await requireMember();
+    if (unwrap(await found.api.rpc('can_edit_materials')) !== true) throw new Error('자료는 강사님만 올릴 수 있어요.');
+    return found;
+  }
   async function requireMember(role = null) {
     const api = await ready();
     const { data, error } = await api.auth.getUser();
@@ -286,6 +311,86 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
         if (error) console.warn('남은 대표 이미지 정리가 필요해요:', error.message);
       }
     },
+    // 등대 책장의 자료보관함. 보기는 로그인 회원, 올리기·수정·삭제는 강사·자료 담당(DB RLS가 다시 막는다).
+    // 파일은 비공개 저장소라 서명 URL(7일)로 열고 복사한다.
+    // 자료 분류: 기본 4개 + 강사(자료 담당)가 추가한 분류. 자료가 남은 분류는 DB가 삭제를 막는다.
+    async listMaterialCategories() {
+      const { api } = await requireMember();
+      return unwrap(await api.from('material_categories').select('id,label,sort_order').order('sort_order').order('created_at'));
+    },
+    async addMaterialCategory(label) {
+      const name = String(label ?? '').trim();
+      if (!name || name.length > 20) throw new Error('분류 이름은 1~20자로 입력해주세요.');
+      const { api } = await requireMaterialEditor();
+      const rows = unwrap(await api.from('material_categories').select('sort_order').order('sort_order', { ascending: false }).limit(1));
+      try {
+        return unwrap(await api.from('material_categories').insert({ id: `c-${crypto.randomUUID().slice(0, 8)}`, label: name, sort_order: (rows[0]?.sort_order ?? 0) + 10 }).select('id,label,sort_order').single());
+      } catch (error) {
+        if (error.code === '23505') throw new Error('같은 이름의 분류가 이미 있어요.');
+        throw error;
+      }
+    },
+    async renameMaterialCategory(id, label) {
+      const name = String(label ?? '').trim();
+      if (!CATEGORY_ID.test(String(id ?? ''))) throw new Error('존재하지 않는 분류입니다.');
+      if (!name || name.length > 20) throw new Error('분류 이름은 1~20자로 입력해주세요.');
+      const { api } = await requireMaterialEditor();
+      try { return unwrap(await api.from('material_categories').update({ label: name }).eq('id', id).select('id,label,sort_order').single()); }
+      catch (error) { if (error.code === '23505') throw new Error('같은 이름의 분류가 이미 있어요.'); throw error; }
+    },
+    async deleteMaterialCategory(id) {
+      if (!CATEGORY_ID.test(String(id ?? ''))) throw new Error('존재하지 않는 분류입니다.');
+      const { api } = await requireMaterialEditor();
+      try { unwrap(await api.from('material_categories').delete().eq('id', id)); }
+      catch (error) { if (error.code === '23503') throw new Error('자료가 남아 있는 분류는 지울 수 없어요. 자료를 먼저 옮기거나 지워 주세요.'); throw error; }
+    },
+    async canEditMaterials() {
+      try { const { api } = await requireMember(); return unwrap(await api.rpc('can_edit_materials')) === true; } catch { return false; }
+    },
+    async listMaterials() {
+      const { api } = await requireMember();
+      const rows = unwrap(await api.from('instructor_materials').select(MATERIAL_COLUMNS).order('created_at', { ascending: false }).limit(300));
+      return Promise.all(rows.map(row => withMaterialFile(api, row)));
+    },
+    async addMaterial({ category, title, description = '', url = '', file = null }) {
+      const fields = checkMaterial({ category, title, description, url, file, needSource: true });
+      const { api, member } = await requireMaterialEditor();
+      let filePath = null;
+      if (file) {
+        filePath = `${member.id}/${crypto.randomUUID()}.${MATERIAL_TYPES[file.type]}`;
+        const { error } = await api.storage.from('instructor-materials').upload(filePath, file, { contentType: file.type, upsert: false });
+        if (error) throw new Error('파일을 저장하지 못했어요. 다시 시도해 주세요.');
+      }
+      try {
+        const row = unwrap(await api.from('instructor_materials').insert({ ...fields, url: file ? null : fields.url, file_path: filePath, file_type: file ? (file.type === 'application/pdf' ? 'pdf' : 'image') : null }).select(MATERIAL_COLUMNS).single());
+        return withMaterialFile(api, row);
+      } catch (error) {
+        if (filePath) await api.storage.from('instructor-materials').remove([filePath]).catch(() => {});
+        if (['42P01', 'PGRST205'].includes(error.code)) throw new Error('자료보관함 DB가 아직 준비되지 않았어요.');
+        throw error;
+      }
+    },
+    // 수정은 분류·제목·설명과 (링크 자료라면) 링크만 바꾼다. 파일을 바꾸려면 지우고 다시 올린다.
+    async updateMaterial(id, { category, title, description = '', url = '' }) {
+      if (!UUID.test(id)) throw new Error('존재하지 않는 자료입니다.');
+      const { api } = await requireMaterialEditor();
+      const previous = unwrap(await api.from('instructor_materials').select('id,file_path').eq('id', id).single());
+      const fields = checkMaterial({ category, title, description, url, needSource: !previous.file_path });
+      const changes = { category: fields.category, title: fields.title, description: fields.description };
+      if (!previous.file_path) changes.url = fields.url;
+      const row = unwrap(await api.from('instructor_materials').update(changes).eq('id', id).select(MATERIAL_COLUMNS).single());
+      return withMaterialFile(api, row);
+    },
+    async deleteMaterial(id) {
+      if (!UUID.test(id)) throw new Error('존재하지 않는 자료입니다.');
+      const { api } = await requireMaterialEditor();
+      const rows = unwrap(await api.from('instructor_materials').delete().eq('id', id).select('file_path'));
+      const paths = rows.map(row => row.file_path).filter(Boolean);
+      if (paths.length) {
+        const { error } = await api.storage.from('instructor-materials').remove(paths);
+        if (error) console.warn('남은 자료 파일 정리가 필요해요:', error.message);
+      }
+    },
     // 게시판의 새 프로젝트·피드백 요청 타일용. 공개 이글루(또는 내) 프로젝트만 RLS로 보인다.
     // announced_at/update_note(업데이트 알리기)는 DB 적용 전에는 없을 수 있어, 없으면 예전 방식(등록 순)으로 읽는다.
     // comment_count = 삭제되지 않은 댓글 수, fresh_comment_count = 마지막 업데이트(없으면 등록) 이후에 달린 댓글 수.
@@ -312,6 +417,21 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
         return { ...await withImage(api, row), comment_count: mine.length,
           fresh_comment_count: mine.filter(comment => Date.parse(comment.created_at) > since).length };
       }));
+    },
+    // 등대 업로드 현황 대시보드(강사·자료 담당). 읽기 전용이고 RLS가 허용한 프로젝트만 온다(비공개 이글루는 빠짐).
+    // since: ISO 시각 또는 null(전체). 최근 프로젝트 4개는 그림 주소까지, 나머지는 집계용 가벼운 행.
+    async getDashboardData(since = null) {
+      if (since !== null && Number.isNaN(Date.parse(since))) throw new Error('조회 기간을 확인해 주세요.');
+      const { api } = await requireMember();
+      const range = query => since ? query.gte('created_at', since) : query;
+      const [projects, comments, reactions] = await Promise.all([
+        api.from('projects').select('id,igloo_id,title,image_path,created_at').order('created_at', { ascending: false }).limit(1000),
+        range(api.from('project_comments').select('project_id,created_at').is('deleted_at', null)).limit(5000),
+        range(api.from('project_reactions').select('project_id,emoji,created_at')).limit(5000)
+      ]);
+      const allProjects = unwrap(projects);
+      const recent = await Promise.all(allProjects.slice(0, 4).map(row => withImage(api, row)));
+      return { projects: allProjects, recent, comments: unwrap(comments), reactions: unwrap(reactions) };
     },
     // 수정 화면의 "마을에 업데이트 알리기". 내 프로젝트만, 같은 프로젝트는 10분에 한 번(서버가 검사). 메모는 선택, 120자 이하.
     async announceProjectUpdate(id, note = '') {

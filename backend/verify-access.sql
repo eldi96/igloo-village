@@ -104,6 +104,7 @@ do $$ begin
 end $$;
 select 'PASS: map grants, unique claims, role protection, private/public projects, instructor access, atomic delivery, inbox isolation, read markers' as security_verification;
 -- 상세 기능 검증은 verify-comment-replies.sql의 독립 롤백 시험으로 실행한다.
+-- 등대 자료보관함 권한은 verify-instructor-materials.sql, verify-material-categories.sql의 독립 롤백 시험으로 실행한다.
 do $$ begin
   if not has_column_privilege('authenticated', 'public.project_comments', 'parent_id', 'INSERT')
     or not has_column_privilege('authenticated', 'public.project_comments', 'deleted_at', 'UPDATE')

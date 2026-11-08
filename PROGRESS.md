@@ -1,5 +1,46 @@
 # 이글루 마을 진행상황 · 작업 인계
 
+## 등대 개편 계획 (2026-11-08, 계획만 · 구현 전)
+
+- 등대 입장은 이미 누구나 가능(`main.js` 입구에 권한 검사 없음). 바꿀 것은 안쪽 기능별 권한뿐. 실제 차단은 DB(RLS)가 하고 화면은 안내만.
+- 순서(사용자 결정): 0 강사 계정 지정 준비 → 1 내부 디자인 방향 시안(제안 후 선택받고 제작) → 2 자료보관함 → 3 전체 메일 → 4 업로드 현황 대시보드 → 5 소통 공간(맨 나중).
+- 0 강사 지정: 강사님이 올지 미정이라 준비만. `backend/set-instructor.sql`(아이디 한 곳만 바꿔 SQL 편집기에서 실행, 실제 DB 미실행). 미승인·이미 강사·이글루 차지 상태면 막고, `visit_exclusions` 추가와 방문 표본 종료까지 함. 되돌리기 주석 포함.
+- 2 자료보관함: 링크·PDF·이미지. 보기는 로그인 회원, 올리기·삭제는 강사. 새 테이블 `instructor_materials`, 새 저장소 `instructor-materials`(PDF·JPG·PNG, 용량 상한 예: 20MB).
+- 3 전체 메일: 기존 `send_mail()`(강사만, 최대 31명) 그대로 사용. 각 수강생 이글루 우편함으로 들어가고 열면 `read_at` 처리. 답장 없음. 작성 시안(`lighthouse-mail.js`)의 예시 수강생 대신 실제 입주자, 전송 버튼 활성화.
+- 4 대시보드(강사): 비공개 이글루는 `비공개`로만 표시하고 숫자도 안 보임. 공개 이글루는 프로젝트 개수·링크·댓글 바로가기(`goInside(ig, projectId)`). 기존 `projects_read`로 충분해 새 DB 작업 없음.
+- 1 내부 디자인(사용자가 A안 서재 확장형 선택, 2026-11-08 1차 반영): `blender/lighthouse_room.py`로 둥근 방(반지름 5.2, 높이 4.0)·아치창 셋·책상(편지·녹색 램프)·오른쪽 서가·왼쪽 벽 지도·왼쪽 앞 의자 둘·렌즈 모형·천장 들보와 등을 만들고 빛을 구움. 결과 `assets/lighthouse-room.glb`(2.6MB) + `lighthouse-{shell,floor,props}-{desktop,mobile}.ktx2`(데스크톱 합계 약 2.5MB). 다시 굽기: `blender -b -P blender/lighthouse_room.py -- bake <폴더>` → `bash blender/encode_lighthouse.sh <폴더>` → `lighthouse-room.js` `BAKE_VERSION` 올리기. 미리보기: `-- preview <png>`.
+  - `lighthouse-room.js` 전면 교체: GLB·KTX2를 불러와 구운 그림을 MeshBasic으로 표시. 창유리·렌즈 유리는 굽지 않고 투명 재질, 벽 지도 면은 실제 이글루 위치로 그린 캔버스. 창밖 바다·별·달과 천천히 도는 등대 불빛 한 줄기는 three.js가 그림. 불러오기 실패 시 빈 방(콘솔 경고).
+  - 클릭: 지금은 책상만(`pickAction` → `mail`, 마우스를 올리면 따뜻한 윤곽). 예전 책상 지도 진입점은 없어짐. 서가·지도·의자는 2~5단계에서 연결.
+  - 걸어다니기(사용자 요청, 이글루 방과 같은 조작): WASD 이동(2.6m/초), 왼쪽 끌기 시선, 휠 앞뒤, 휴대폰 한 손가락 끌기·두 손가락 벌리기. 눈높이 1.65 고정(Q·E 없음). 충돌은 벽 반지름 4.7과 책상+의자·서가·서랍장·안락의자 둘(회전 사각형), 찻잔 탁자·렌즈 받침(원), 여유 0.3. 왼쪽 아래 `등대 안 둘러보기` 안내. 우편 창이 열려 있거나 입력 중이면 조작 정지. 끌기 직후 클릭은 책상 클릭으로 치지 않음(`consumeDrag`). main.js는 들어갈 때 `enter()`, 나올 때 `leave()` 호출, 예전 마우스 시차 이동 대신 걷기. 로컬 브라우저에서 W 이동·끌기 회전·안내 표시/숨김·끌기 후 우편 창 안 열림·콘솔 오류 없음 확인.
+  - 로우폴리로 전환(사용자 확정): 벽·바닥·천장 28각, 작은 원기둥 8각, 아치 6각, 모서리 한 번 깎기, 나뭇결·회벽 요철 없이 평평한 색(바닥 판자 줄만). 넓은 면 자글자글한 무늬(나뭇결 대비 + ETC1S 압축)도 함께 해결, 벽·천장 그림은 UASTC로 압축(데스크톱 3.4MB). `BAKE_VERSION 4`.
+  - 의자 둘이 찻잔 탁자를 마주 보게 재배치(`TEA`, `SEATS`, JS 충돌 값 동일). 렌즈 유리는 가장자리만 빛나는 셰이더. 책상 호버는 네모 윤곽 대신 따뜻한 빛 + `전체 메일 쓰기` 이름표.
+  - 벽 액자: "누르면 대시보드가 열리는 물건"임을 알리는 용도. 사용자가 보낸 참고 이미지(파스텔 대시보드 구성: 복숭아 판·카드·민트 공·알약 버튼·분홍 나뭇가지)를 캔버스로 그대로 옮김(`drawMapArtCanvas`, 참고 이미지 735×410 좌표 기준). 로우폴리 지도·파스텔 마을 지도 시안은 채택 안 됨.
+  - **최신(사용자 확정): 플라스틱·점토 3D 아이콘 질감으로 전면 재작성.** 방 반지름 4m·천장 3.4m. 크게 둥근 모서리(베벨+harden normals), 한 가지 색 살짝 윤기. 복숭아 벽·세이지 바닥·테라코타 러그, 주황 서랍장형 책상(흰 손잡이), 캐러멜 책장(원색 큰 책), 탠 안락의자 둘(민트 쿠션)·주황 찻잔 탁자, 흰 아치 창틀, 남색 시계, 흰 벽등·펜던트, 화분 스툴(렌즈 모형 삭제). Standard 뷰로 굽고 노출 -1.25(사용자 요청으로 두 번 낮춤). `BAKE_VERSION 6`. 로우폴리·서재 버전은 폐기.
+  - 책장 클릭: 마우스를 올리면 따뜻한 빛 + `자료보관함` 이름표, 가운데 칸 둘째 책(`LhBook`, 따로 512 굽기)이 앞으로 14cm 뽑힘. 누르면 아직 기능이 없어 "자료보관함은 곧 열려요" 안내. 책상과 같은 `HOTSPOTS` 구조.
+  - 충돌·시점·책상 영역을 새 방에 맞춤(벽 3.55, 시작 (0,1.5,3.05), 세로 화각 60/휴대폰 76). 알려진 문제: 창 아치 바깥 테두리가 검게 구워짐(다음 굽기 때 수정).
+  - main.js가 `renderer`·`isBlocked`를 넘기도록 수정, 캐시 `lighthouse-room.js?v=lh-clay3`, index `main.js?v=lh-clay3`.
+- 2 자료보관함(2026-11-08 구현, **DB 미적용**): 책장 클릭 → `lighthouse-archive.js` 창(사용자 참고 이미지 구성). 왼쪽 분류·개수, 가운데 목록(썸네일·제목·출처·날짜, 최신순), 오른쪽 상세(설명·열기 링크·**복사 아이콘**). 같은 창에서 강사 계정만 `자료 올리기`·수정·삭제(운영자 포함 다른 계정은 못 올림, 사용자 결정).
+  - 디자인(사용자 참고 이미지 "CALM / KIT"): 아이보리 바탕 + 부드러운 그림자의 카드 세 칸, 세이지 그린 강조, 작은 대문자 라벨(CATEGORY·DETAIL), 알약 버튼, 12px 안팎의 작은 글씨, 정보는 태그 칩. 캐시 `lighthouse-archive.js?v=arch4`, index `main.js?v=lh-arch4`.
+  - 분류(사용자 결정, 고정): 면담 예약(meeting)·웹사이트(website)·유튜브(youtube)·강의자료(lecture). 썸네일: 유튜브는 영상 썸네일 자동, 나머지는 분류 아이콘.
+  - 자료 = 링크 하나 또는 파일 하나(PDF·JPEG·PNG·WebP 20MB). 파일은 비공개 저장소 `instructor-materials`, 서명 URL 7일(열기·복사). 수정은 분류·제목·설명·링크만(파일 교체는 삭제 후 재등록).
+  - DB: `backend/instructor-materials.sql`(테이블·RLS·저장소 정책)을 사용자 승인 후 마이그레이션 `add_instructor_materials`로 **실제 DB 적용 완료**(2026-11-08). 검증 `backend/verify-instructor-materials.sql` 롤백 시험 통과(남은 행·시험 계정 0). 로컬에서 일반 계정으로 창을 열면 "아직 올라온 자료가 없어요", `자료 올리기` 버튼은 숨김 확인. 저장소 파일 업로드는 강사 계정이 없어 미시험.
+  - 분류 직접 관리(사용자 요청, 마이그레이션 `add_material_categories` **실제 DB 적용 완료**, 롤백 시험 통과·기존 자료 3개 유지): `backend/material-categories.sql`(분류 테이블 `material_categories` + 기본 4개 + 자료 분류를 고정 목록 대신 외래키로, 자료가 남은 분류는 삭제 불가), 검증 `verify-material-categories.sql`. 창 왼쪽 `CATEGORY` 옆 `편집`(강사·자료 담당만) → 이름 칸(엔터·포커스 아웃 시 저장), × 삭제, 아래 `새 분류 이름` + `추가`. 추가한 분류는 폴더 아이콘·중립색, 유튜브 링크면 분류와 상관없이 영상 썸네일. 적용 전에는 기본 4개로 동작. 캐시 `client.js?v=arch3`, `lighthouse-archive.js?v=arch7`, index `main.js?v=lh-cat2`.
+  - 강의자료 업로드(사용자 요청, 2026-11-08): 바탕화면 `ALEPH/네트워크 강의자료` PDF 16개 → 강의자료(Network)(id `lecture`), `ALEPH/파이썬 강의 자료` PDF 15개 → 강의자료(Python)(id `c-e033448d`). eldi 계정 세션으로 앱 경로(`addMaterial`)를 통해 올림, 제목은 파일명에서("네트워크 10월 29일 오전 · Unused Permissions"), 날짜순. DB·저장소 31개 확인, 임시 복사 폴더 삭제.
+  - 분류 탭을 바꾸면 오른쪽 상세가 그 분류의 첫 자료로 바뀜(비면 안내 문구). 다른 분류 링크가 남지 않게(사용자 지적). 캐시 `lighthouse-archive.js?v=arch8`, index `main.js?v=lh-cat3`.
+  - 등대에 다시 들어갔을 때 첫 클릭이 무시되던 문제 수정(`enter()`에서 끌기 상태 초기화).
+  - 자료 담당 명단(사용자 요청): 강사 외에 `private.material_editors`에 든 계정도 올리기·수정·삭제. eldi(디야) 계정을 넣음 — 역할은 student 그대로(21번 이글루·프로젝트 유지). `backend/material-editors.sql`, 마이그레이션 `add_material_editors` **실제 DB 적용 완료**, 롤백 시험 통과. 화면 버튼은 `can_edit_materials()`로 판단. 빼는 SQL은 파일 머리말.
+  - 책장 호버는 빛 없이 이름표 + 책 뽑힘만(사용자 요청).
+  - 이름표 디자인(사용자 요청, CALM 톤): 아이보리 알약 + 세이지 점 + 작은 대문자 영문(LETTER·ARCHIVE·DASHBOARD) + 한글 이름. 나타날 때 8px 아래·94%·살짝 흐림에서 떠오르며 선명해지고(240ms ease-out), 사라질 때도 그 자리에서 흐려짐. 움직임 줄이기 설정이면 투명도만. 캐시 `lighthouse-room.js?v=lh-arch4`, index `main.js?v=lh-arch8`.
+  - 창밖 마을 풍경(사용자 요청, 가장 가벼운 방식): 들어가기 직전 main.js `captureLighthouseView()`가 등대 꼭대기(지면+11, 광장 쪽 4m 앞)에서 광장 쪽 실제 마을을 1600×667로 한 장 찍고, 등대 방 창밖 판(40×16.7, z -34)에 붙인다. 실시간 아님(이글루 창밖과 같은 방식). 사진이 있으면 밤바다·달·별·회전 불빛은 숨김. 캐시 `lighthouse-room.js?v=lh-view2`, index `main.js?v=lh-view2`.
+  - 조명 스위치(사용자 요청): 오른쪽 창틀에서 떨어진 벽(blender on_wall(51), 높이 1.4, `SW` 상수). 둥근 흰 판 + 안쪽 테 + 세이지 로커(살짝 기울임, 위쪽 홈) + 나사 둘, 매트캡 그림으로 점토 같은 명암(조명 없이), 실제보다 1.25배(three.js, 굽지 않음). 마우스를 올리면 `LIGHT 조명 밝기` 이름표 + 토글이 밝아지고 8% 커짐. 누르면 스위치 위에 세로 슬라이더(30~140%) 알약 패널이 떠오름. 다른 곳 클릭·Esc·나가기로 닫힘. 구운 재질 색에 밝기를 곱할 뿐이라 가벼움. 값은 이 브라우저 localStorage `lh-light`에만 저장. 하단 가로 슬라이더 시안은 폐기. 캐시 `lighthouse-room.js?v=lh-switch1`, index `main.js?v=lh-switch1`.
+  - 왼쪽 벽 액자도 누를 수 있는 물건으로(사용자 요청): 마우스를 올리면 `업로드 현황` 이름표 + 그림이 살짝 밝아짐, 누르면 "업로드 현황은 곧 열려요" 안내(대시보드는 4단계). 캐시 `lighthouse-room.js?v=lh-arch3`, index `main.js?v=lh-arch7`.
+  - `backend/client.js`: `listMaterials`·`addMaterial`·`updateMaterial`·`deleteMaterial`·`canEditMaterials`, 캐시 `client.js?v=arch1`, `lighthouse-room.js?v=lh-arch1`, index `main.js?v=lh-arch1`. 테스트 54개 통과(`lighthouse-archive.test.mjs` 유튜브 id 추가). 로컬 브라우저에서 책장 클릭 → 창 열림·Esc 닫힘 확인. 강사 계정이 없어 올리기 화면은 실제로 시험 못 함. 문법 검사·테스트 53개 통과. 화면 확인(밝기·ACES 이중 톤 보정 필요 여부, 휴대폰)은 사용자.
+- 4 업로드 현황 대시보드 화면(2026-11-08, 사용자 확정 시안 2): 왼쪽 벽 액자를 누르면 `lighthouse-dashboard.js` 창. 맥 창 틀(빨간 점 = 닫기) + 연한 파스텔(복숭아·민트·분홍·버터). 배치: 왼쪽 위 최근 프로젝트 4개(누르면 등대를 나와 그 이글루의 해당 프로젝트로) · 왼쪽 아래 강의실 좌석(왼쪽 3석·오른쪽 4석 책상 5줄 = 35석, 지금은 번호만, 계정 연결 예정) · 가운데 위 활약도(업로드·댓글·리액션 곡선, 마우스 위치 날짜 수치) · 가운데 아래 리액션별 프로젝트(많은 5개 + 기타 도넛, 👍/❤️ 나눔) · 오른쪽 세로 면담 요청(전체/프로젝트/개인 탭, **예시 데이터**). 기간 7일/30일/전체(전체는 주 단위).
+  - 데이터: `client.js` `getDashboardData(since)` 읽기 전용(projects·project_comments·project_reactions, RLS가 허용한 것만이라 비공개 이글루는 빠짐). 새 DB 작업 없음. 보는 권한은 임시로 `canEditMaterials`(강사 또는 자료 담당) 재사용, 그 외에는 "강사만 볼 수 있어요".
+  - 남은 것: 좌석 배정 저장(DB)·면담 요청 기능(DB + 수강생 요청 버튼) — SQL 먼저 보여 주고 승인 후. 시험 4개 추가(`lighthouse-dashboard.test.mjs`), 전체 31개 통과. 캐시 `lighthouse-dashboard.js?v=dash7`, `client.js?v=dash1`, index `main.js?v=dash7`. dash6(사용자 지적: 흰 바탕·흰 빛 그림자라 입체감 안 삶): 창 바탕을 참고 이미지의 탠 톤(#e2bea2→#cfa383)으로, 카드는 색판(최근 크림 #f0e3d4·활약도/리액션 밝은 회색 #ebeae7·면담 베이지 #e9c9ab·강의실 청록 #95d1c5), 흰 빛 그림자 전부 제거하고 아래로 떨어지는 회청색 그림자(rgba(38,48,52))로만 입체감. 선택된 탭·기간·`시간 잡기`는 차콜, 첫 프로젝트 줄은 테라코타. dash5(사용자 참고 이미지 2: 테라코타·청록 3D 위젯): 그래프 자체를 입체로 — 도넛은 기울인 두께 있는 원판(조각마다 여러 겹 옆면 + 빛 그라데이션 + 그림자, 마우스 올리면 조각이 빠짐), 활약도는 층마다 위가 밝은 그라데이션 + 앞층 그림자. 색은 참고 이미지 분석값 그대로: 테라코타 #e0875a·청록 #4fb0a0·차콜 #3b4249·모래 #e8c39a·연민트 #9fd6c8, 그림자는 차가운 회청색 #3e4a4c(파스텔은 흐릿해 보여 폐기). dash4(사용자 지적): 안쪽 요소마다 소프트 UI(뉴모피즘) 그림자로 입체감 — 바탕과 같은 색 + 오른쪽 아래 따뜻한 그림자 + 왼쪽 위 흰 빛(`--up`/`--up-s`/`--up-xs`), 홈은 안쪽 그림자(`--in`). 카드·프로젝트 줄·면담 카드·좌석 키·선택된 탭은 볼록, 그래프 자리·책상·탭 바탕은 오목, 도넛은 볼록 원판 + 오목 가운데. dash3: 사용자 참고 이미지(파스텔 맥 창)에 맞춰 복숭아·분홍·민트 그라데이션 창, 반투명 카드, 칸 제목+회색 부제, 선 없는 겹친 산 그래프, 두툼한 도넛으로 재조정. 칸 배치를 grid-area로 고정(면담 요청이 왼쪽으로 가던 문제), 닫기 막 z-index 1000. dash1은 닫힌 창의 투명 막(`.ldb[hidden]` 규칙 누락)이 등대 클릭을 전부 막던 버그가 있었음. 브라우저 화면 확인은 사용자.
+- 정리(2026-11-09, main 합치기 전): 대시보드의 안 쓰는 CSS(선 그리기 애니메이션·파스텔 변수) 삭제, main.js 오래된 주석 수정. `backend/schema.sql`에 자료보관함 세 SQL(테이블·정책·버킷·분류) 반영(eldi 명단 데이터는 제외), `verify-access.sql`에 자료보관함 검증 파일 안내 추가. 방 GLB meshopt 압축(`lighthouse-room.glb` 2.0MB, `igloo-room.glb` 3.4MB)은 압축 도구 내려받기가 권한 검사에서 막혀 못 함 — 다음에 사용자 허락 후 `@gltf-transform/cli meshopt` + 로더에 `MeshoptDecoder`.
+- 5 소통 공간: 강사 또는 수강생이 요청 → 상대에게 알림 → 수락 시 1:1 채팅방. `talk_requests`·`talk_messages` 예정. 요청 위치·오프라인 알림·거절/만료·방 수명은 그때 정함.
+
 ## 배포 후 다듬기 (2026-11-08, eldi 로컬)
 
 - AI 정리: PR #20 머지 후 실제 사이트에서 동작 확인(사용자).
@@ -7,7 +48,7 @@
 - 광장 보드: 왼쪽 칸 비율 1.05:1.35:1.2 → 1.05:1:1.55(피드백 기다려요 축소, 개선 의견 확대), 휴대폰 210/340px. 개선 의견의 '채팅에서 N번 언급' 문구 제거(DB에는 유지).
 - 운영자 한마디: 의견 아래 `— 난이도 높음 ㅠㅠ`처럼 모두에게 보이는 한 줄(최대 80자, 비우면 삭제). 운영자 전체가 `운영: 한마디` 버튼으로 작성. `backend/improvement-idea-notes.sql` 마이그레이션 `add_improvement_idea_notes` **실제 DB 적용 완료**(사용자 승인), `verify-improvement-idea-notes.sql` 롤백 시험 통과.
 - 북극곰 쓰다듬기: 지도에서 곰을 누르면 카메라가 곰 앞 약 4m로 다가가고(모드 `bear`), 0.9초 뒤 곰이 카메라 쪽으로 돌아보며 통통 두 번 뛰고 하트 3개. 약 3.9초 뒤 지도로 복귀, 다른 곳 클릭·Esc로 즉시 복귀. 클릭 판정은 보이지 않는 상자, 움직임 줄이기 설정이면 뛰기 생략. `polar-bear.js`(`hit`, `pet`), `main.js`(`showBear`). 화면 확인은 사용자.
-- 캐시: index `main.js?v=note1`, board/client `note1`, village `fire-pin1`, polar-bear `pet2`. 테스트 42개 통과. 커밋·푸시 안 함.
+- 캐시: index `main.js?v=note1`, board/client `note1`, village `fire-pin1`, polar-bear `pet2`. 테스트 42개 통과. PR #21까지 main에 합쳐짐.
 
 ## 개선 의견 AI 정리 (2026-11-08, eldi 로컬)
 
@@ -16,7 +57,7 @@
 - 흐름: 보드 `AI로 정리`(운영자만 보임) → `api/summarize-ideas.mjs`가 호출자 로그인 토큰으로 `start_improvement_summary`(운영자 확인, 전체 10분 1회, 최근 채팅 200개 본문만) → OpenAI JSON 응답 → `save_ai_improvement_ideas`(1~3개, 이전 `검토 대기`는 새 결과로 교체). 이미 공개된 의견 제목은 AI에 알려 중복을 피함. Supabase service role 키 불필요. AI 호출이 실패해도 10분 제한은 걸림.
 - DB: `improvement-ideas.sql`은 마이그레이션 `add_improvement_ideas`로 **실제 DB 적용 완료**, `verify-improvement-ideas.sql` 롤백 시험 통과(시험 파일의 smallint 형 변환 실수 수정). `improvement-ideas-ai.sql`은 사용자 승인 후 마이그레이션 `add_improvement_ideas_ai_summary`로 **실제 DB 적용 완료**, `verify-improvement-ideas-ai.sql` 롤백 시험 통과. `eldi`에 기능별 커밋 8개 푸시(2026-11-08).
 - AI 정리 권한을 키 주인 한 명(아이디 `eldi`)으로 좁힘(사용자 요청): `backend/improvement-ideas-ai-owner.sql`(`private.ai_summary_admins`, `can_run_ai_summary`), 마이그레이션 `restrict_ai_summary_to_owner` **실제 DB 적용 완료**, 롤백 시험 통과. 버튼은 이 계정에서만 보임. 공개·상태 변경·숨김은 운영자 전체 그대로. 다른 사람을 추가하려면 `private.ai_summary_admins`에 member_id 추가. 캐시 `ai-owner1`.
-- 파일: `api/summarize-ideas.mjs`, `summarize-ideas.test.mjs`(2개), `backend/client.js`(`summarizeImprovementIdeas`), `anonymous-board.js`(버튼), `main.js` 캐시 `ai-ideas1`. 테스트 36개 통과. 실제 OpenAI 호출·화면은 미확인. 커밋·푸시 안 함.
+- 파일: `api/summarize-ideas.mjs`, `summarize-ideas.test.mjs`(2개), `backend/client.js`(`summarizeImprovementIdeas`), `anonymous-board.js`(버튼), `main.js` 캐시 `ai-ideas1`. 테스트 36개 통과. 실제 OpenAI 호출·화면은 미확인. PR #21까지 main에 합쳐짐.
 
 ## index.html 분리 (2026-11-07, eldi 로컬)
 
