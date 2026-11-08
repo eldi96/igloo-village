@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { villageBackend } from './backend/client.js?v=note1';
+import { villageBackend } from './backend/client.js?v=dash1';
 import { mountAuth } from './auth-ui.js';
 import { mountChat } from './chat-ui.js';
 import { mountCommentMailbox } from './comment-mailbox.js?v=auto-open';
@@ -1146,11 +1146,6 @@ addEventListener('pointermove', e => {
   pointer.set(e.clientX / W() * 2 - 1, -(e.clientY / H()) * 2 + 1);
   mx = pointer.x; my = pointer.y;
   overBoard = e.pointerType !== 'mouse' || Boolean(e.target?.closest?.('.ab-tile, .ab-top button'));
-  if (mode === 'room' && room === lighthouseRoom) {
-    const hoverMap = !mailComposer?.isOpen() && lighthouseRoom.pickAction(pointer) === 'mail';
-    lighthouseRoom.setMapHovered(hoverMap);
-    canvas.style.cursor = hoverMap ? 'pointer' : '';
-  }
   const held = touches.get(e.pointerId);
   if (!held || mode !== 'map') return;
   const dx = e.clientX - held.x, dy = e.clientY - held.y;
@@ -1192,7 +1187,14 @@ canvas.addEventListener('click', e => {
     if (polarBear?.hit(ray)) { showBear(); return; }
   }
   if (mode === 'room' && room === lighthouseRoom) {
-    if (lighthouseRoom.pickAction(pointer) === 'mail') openLighthouseMail();
+    if (lighthouseRoom.consumeDrag()) return;
+    const action = lighthouseRoom.pickAction(pointer);
+    if (action === 'mail') openLighthouseMail();
+    // 자료보관함은 아직 만들기 전이라 안내만 잠깐 보여 준다.
+    else if (action === 'archive') archive?.open();
+    else if (action === 'light') lighthouseRoom.toggleLight();
+    // 왼쪽 벽 액자: 업로드 현황 대시보드(강사·자료 담당만 내용이 보임).
+    else if (action === 'dashboard') dashboard?.open();
     return;
   }
   if (mode === 'map' || mode === 'in') {
@@ -1344,6 +1346,23 @@ function captureWindowView(ig) {
   return windowViewTarget.texture;
 }
 
+// 등대 창밖 풍경: 들어가기 직전, 등대 꼭대기 높이에서 광장 쪽 마을을 내려다본 사진 한 장(실시간 아님).
+let lighthouseViewTarget = null;
+function captureLighthouseView() {
+  if (!village) return null;
+  lighthouseViewTarget ??= new THREE.WebGLRenderTarget(1600, 667, { samples: 4 });
+  const out = new THREE.Vector3(HUB.x - LIGHTHOUSE.x, 0, HUB.z - LIGHTHOUSE.z).normalize();
+  const eye = new THREE.Vector3(LIGHTHOUSE.x, 0, LIGHTHOUSE.z).addScaledVector(out, 4);
+  eye.y = heightAt(LIGHTHOUSE.x, LIGHTHOUSE.z) + 11;
+  const look = new THREE.Vector3(HUB.x, heightAt(HUB.x, HUB.z), HUB.z).addScaledVector(out, 6);
+  const shot = new THREE.PerspectiveCamera(58, 1600 / 667, 0.1, 1400);
+  shot.position.copy(eye); shot.lookAt(look);
+  renderer.setRenderTarget(lighthouseViewTarget);
+  renderer.render(scene, shot);
+  renderer.setRenderTarget(null);
+  return lighthouseViewTarget.texture;
+}
+
 async function enter(ig) {
   if (ig.stats) {
     focusOn(ig);
@@ -1393,7 +1412,7 @@ function closeVisitDashboard() {
   setBar('마을 관측소', [['방문 통계 보기', openVisitDashboard, true], ['마을로 돌아가기', leave]]);
   bar.querySelector('button')?.focus();
 }
-let mailComposer = null;
+let mailComposer = null, archive = null, dashboard = null;
 let currentRoomIg = null;
 const openLighthouseMail = () => {
   if (mode === 'room' && room === lighthouseRoom && mailComposer) mailComposer.open();
@@ -1432,7 +1451,25 @@ async function goInside(ig, projectId = null) {
     }
   }
   if (ig.house) {
-    if (!lighthouseRoom) lighthouseRoom = (await import('./lighthouse-room.js')).createLighthouseRoom({ places, hub: HUB, lighthouse: LIGHTHOUSE });
+    if (!lighthouseRoom) lighthouseRoom = (await import('./lighthouse-room.js?v=lh-cat1')).createLighthouseRoom({ renderer, isBlocked: () => Boolean(mailComposer?.isOpen() || archive?.isOpen() || dashboard?.isOpen()), places, hub: HUB, lighthouse: LIGHTHOUSE });
+    // 책장을 누르면 여는 자료보관함. 강사 계정이면 올리기·수정·삭제가 더 보인다.
+    if (!archive) archive = (await import('./lighthouse-archive.js?v=arch8')).createLighthouseArchive({
+      backend: villageBackend, getMember: () => auth.member,
+      onOpen: () => { bar.hidden = true; canvas.style.cursor = ''; lighthouseRoom.setMapHovered(false); },
+      onClose: () => { bar.hidden = false; }
+    });
+    if (!dashboard) dashboard = (await import('./lighthouse-dashboard.js?v=dash6')).createLighthouseDashboard({
+      backend: villageBackend, getOwner: id => homeIgloo(Number(id)),
+      // 최근 프로젝트를 누르면 등대를 나와 그 이글루의 해당 프로젝트로 바로 들어간다.
+      onGoProject: (iglooId, projectId) => {
+        const target = homeIgloo(Number(iglooId)); if (!target) return;
+        lighthouseRoom?.setMapHovered(false); lighthouseRoom?.leave();
+        if (currentRoomIg?.gate) currentRoomIg.gate.visible = true;
+        focusOn(target); goInside(target, projectId);
+      },
+      onOpen: () => { bar.hidden = true; canvas.style.cursor = ''; lighthouseRoom.setMapHovered(false); },
+      onClose: () => { bar.hidden = false; }
+    });
     if (!mailComposer) mailComposer = (await import('./lighthouse-mail.js')).createLighthouseMail({
       getHomes: () => igloos.filter(home => !home.house).map((home, id) => ({ ...places[id], id, owner: home.mine ? '나' : home.owner })),
       hub: HUB, lighthouse: LIGHTHOUSE,
@@ -1446,12 +1483,14 @@ async function goInside(ig, projectId = null) {
   }
   room.setAspect?.(W() / H());
   const windowView = room === iglooRoom ? captureWindowView(ig) : null;
+  if (room === lighthouseRoom) lighthouseRoom.setWindowView(captureLighthouseView());
   if (ig.gate) ig.gate.visible = false;
   fadeThrough(() => {
     mode = 'room';
     currentRoomIg = ig;
     chat.setHidden(true);
     count.hidden = true;
+    if (room === lighthouseRoom) room.enter();
     if (room === iglooRoom) room.enter({ home: ig.home, isMine: ig.mine, isPublic: ig.isPublic, projectId, ownerName: ig.mine ? auth.member?.display_name : ig.owner, windowView, lightColor: ig.lightColor });
     renderPass.scene = room.scene;
     renderPass.camera = room.camera;
@@ -1461,11 +1500,14 @@ async function goInside(ig, projectId = null) {
 }
 function goOutside(ig) {
   mailComposer?.close();
+  archive?.close();
+  dashboard?.close();
   lighthouseRoom?.setMapHovered(false);
   canvas.style.cursor = '';
   fadeThrough(() => {
     if (ig.gate) ig.gate.visible = true;
     iglooRoom?.leave();
+    lighthouseRoom?.leave();
     tutorial.leaveRoom();
     renderPass.scene = scene;
     renderPass.camera = camera;
@@ -1514,7 +1556,7 @@ function frame() {
   }
   if (mode === 'room') {
     igloos.forEach(ig => { if (ig.label) ig.label.style.display = 'none'; });
-    const writingMail = mailComposer?.isOpen();
+    const writingMail = mailComposer?.isOpen() || archive?.isOpen() || dashboard?.isOpen();
     room.update(t, writingMail ? 0 : mx, writingMail ? 0 : my);
     renderer.info.reset();
     composer.render();
