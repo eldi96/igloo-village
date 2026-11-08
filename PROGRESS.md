@@ -5,7 +5,8 @@
 - 사용자 결정: 익명 채팅을 AI(OpenAI, 사용자 키)가 읽고 많이 나온 의견 3개를 왼쪽 `서비스 개선 의견` 칸에 넣고 회원이 👍/👎 투표. 분석은 운영자가 버튼을 누를 때만, 결과는 `검토 대기`로 들어가고 운영자가 확인 후 `공개`.
 - 키 관리: `OPENAI_API_KEY`는 사용자 혼자 쓰는 Vercel 환경변수에만 둔다(선택: `OPENAI_MODEL`, 기본 `gpt-5-mini`). GitHub·DB·브라우저에는 없음. 팀원 로컬에선 함수가 없어 버튼이 `배포된 사이트에서만` 오류를 보여 줌. OpenAI 대시보드 월 한도 설정 권장.
 - 흐름: 보드 `AI로 정리`(운영자만 보임) → `api/summarize-ideas.mjs`가 호출자 로그인 토큰으로 `start_improvement_summary`(운영자 확인, 전체 10분 1회, 최근 채팅 200개 본문만) → OpenAI JSON 응답 → `save_ai_improvement_ideas`(1~3개, 이전 `검토 대기`는 새 결과로 교체). 이미 공개된 의견 제목은 AI에 알려 중복을 피함. Supabase service role 키 불필요. AI 호출이 실패해도 10분 제한은 걸림.
-- DB: `improvement-ideas.sql`은 마이그레이션 `add_improvement_ideas`로 **실제 DB 적용 완료**, `verify-improvement-ideas.sql` 롤백 시험 통과(시험 파일의 smallint 형 변환 실수 수정). `improvement-ideas-ai.sql`은 **미적용**(자동 적용이 권한 확인에 막힘). 적용 후 `verify-improvement-ideas-ai.sql` 롤백 시험 실행.
+- DB: `improvement-ideas.sql`은 마이그레이션 `add_improvement_ideas`로 **실제 DB 적용 완료**, `verify-improvement-ideas.sql` 롤백 시험 통과(시험 파일의 smallint 형 변환 실수 수정). `improvement-ideas-ai.sql`은 사용자 승인 후 마이그레이션 `add_improvement_ideas_ai_summary`로 **실제 DB 적용 완료**, `verify-improvement-ideas-ai.sql` 롤백 시험 통과. `eldi`에 기능별 커밋 8개 푸시(2026-11-08).
+- AI 정리 권한을 키 주인 한 명(아이디 `eldi`)으로 좁힘(사용자 요청): `backend/improvement-ideas-ai-owner.sql`(`private.ai_summary_admins`, `can_run_ai_summary`), 마이그레이션 `restrict_ai_summary_to_owner` **실제 DB 적용 완료**, 롤백 시험 통과. 버튼은 이 계정에서만 보임. 공개·상태 변경·숨김은 운영자 전체 그대로. 다른 사람을 추가하려면 `private.ai_summary_admins`에 member_id 추가. 캐시 `ai-owner1`.
 - 파일: `api/summarize-ideas.mjs`, `summarize-ideas.test.mjs`(2개), `backend/client.js`(`summarizeImprovementIdeas`), `anonymous-board.js`(버튼), `main.js` 캐시 `ai-ideas1`. 테스트 36개 통과. 실제 OpenAI 호출·화면은 미확인. 커밋·푸시 안 함.
 
 ## index.html 분리 (2026-11-07, eldi 로컬)

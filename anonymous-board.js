@@ -213,7 +213,7 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
   const slides = $('.ab-slides'), dots = $('.ab-dots'), askList = $('.ab-ask-list'), newTile = $('.ab-new-tile'), ideaList = $('.ab-idea-list');
   const PAGE_SIZE = 20, POLL_MS = 6000, SLIDE_MS = 3000;
   const ASK_COLORS = ['#2f6f9f', '#5f8fb4', '#8db0c9', '#9aa3c4', '#b7b2cf'];
-  let canModerate = false, opened = false, loading = false, hasOlder = false, generation = 0, pollTimer = 0, unseen = 0;
+  let canModerate = false, canRunAi = false, opened = false, loading = false, hasOlder = false, generation = 0, pollTimer = 0, unseen = 0;
   let slideTimer = 0, slideIndex = 0, slidePaused = false, pollCount = 0;
   let posts = []; // 오래된 것 → 최신 순
   let onExit = () => {};
@@ -384,7 +384,7 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
     const note = sample ? [el('p', 'ab-sample', '예시 화면이에요 · 개선 의견이 올라오면 실제 내용으로 바뀝니다')] : [];
     ideaList.replaceChildren(...note, ...rows);
   }
-  // 운영자 전용: 채팅을 AI로 정리해 `검토 대기`로 넣는다. 공개는 운영자가 항목마다 직접 누른다.
+  // 지정된 한 계정(키 주인)만: 채팅을 AI로 정리해 `검토 대기`로 넣는다. 공개는 운영자가 항목마다 직접 누른다.
   const aiButton = $('.ab-ai');
   aiButton.addEventListener('click', async () => {
     aiButton.disabled = true; aiButton.textContent = '정리 중…';
@@ -397,7 +397,7 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
   });
   async function loadIdeas() {
     const token = generation;
-    aiButton.hidden = !canModerate;
+    aiButton.hidden = !canRunAi;
     try {
       const rows = await backend.listImprovementIdeas();
       if (opened && generation === token) { ideas = rows; renderIdeas(!rows.length); }
@@ -420,9 +420,10 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
   }
   // 운영자 여부는 열 때마다 다시 확인한다. 실패하면 일반 사용자처럼 보인다.
   async function refreshModerator() {
-    canModerate = false;
+    canModerate = canRunAi = false;
     if (!getMember()?.approved) return;
     try { canModerate = await backend.canModerateVillageBoard(); } catch { canModerate = false; }
+    try { canRunAi = canModerate && await backend.canRunAiSummary(); } catch { canRunAi = false; }
   }
   function renderPost(post) {
     const article = el('article', 'ab-post' + (post.is_mine ? ' is-mine' : ''));
