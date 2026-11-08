@@ -93,6 +93,8 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
     .ab-surface .ab-react button.is-down.is-on{background:rgba(122,98,74,.14);border-color:var(--muted);color:var(--muted)}
     .ab-mod{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap}
     .ab-surface .ab-mod button{font-size:.72em;padding:3px 10px}
+    .ab-idea-note{grid-column:1/-1;margin:0;font-size:.78em;line-height:1.4;color:var(--accent);overflow-wrap:anywhere}
+    .ab-note-input{flex:1 1 160px;min-width:0;font:inherit;font-size:.78em;padding:4px 12px;border-radius:999px;border:1px solid rgba(196,128,48,.3);background:rgba(255,255,255,.8);color:var(--text);outline-offset:2px}
     .ab-surface .ab-ai{flex:none;align-self:center;font-size:.72em;padding:3px 10px;font-variant-numeric:tabular-nums}
     .ab-sample{align-self:flex-start;margin:0 0 2px;padding:4px 12px;border-radius:999px;background:rgba(122,98,74,.12);color:var(--muted);font-size:.72em}
     .ab-surface .ab-react button:disabled{opacity:.75}
@@ -332,12 +334,12 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
   // ── 서비스 개선 의견(좋아요/싫어요) ──
   const NEXT_STATUS = { review: [['공개', 'voting']], voting: [['진행 중으로', 'in_progress']], in_progress: [['완료로', 'done']], done: [] };
   const STATUS_LABEL = { review: '검토 대기', in_progress: '진행 중', done: '반영 완료' };
-  let ideas = [];
+  let ideas = [], editingNote = false;   // 한마디를 쓰는 동안에는 30초 갱신이 입력칸을 지우지 않게 한다
   // 실제 의견이 올라오기 전에 보이는 예시. 채팅에 나온 주제를 본뜬 것이며, 누를 수 없다.
   const SAMPLE_IDEAS = [
     { title: '북극곰과 상호작용', summary: '먹이를 주거나 말을 걸 수 있으면 좋겠어요', category: '기능', mentions: 4, status: 'voting', ups: 12, downs: 1, my_value: 0 },
     { title: '1인칭으로 마을 걷기', summary: '메타버스처럼 직접 걸어 다니고 싶어요', category: '기능', mentions: 3, status: 'voting', ups: 9, downs: 2, my_value: 0 },
-    { title: '호수에서 낚시하기', summary: '호수에서 즐길 수 있는 활동', category: '콘텐츠', mentions: 2, status: 'in_progress', ups: 7, downs: 0, my_value: 0 },
+    { title: '호수에서 낚시하기', summary: '호수에서 즐길 수 있는 활동', category: '콘텐츠', mentions: 2, status: 'in_progress', ups: 7, downs: 0, my_value: 0, note: '난이도 높음 ㅠㅠ' },
     { title: '내 이글루 알림을 첫 화면에', summary: '댓글·반응을 들어오자마자 보여 주기', category: '디자인', mentions: 2, status: 'done', ups: 15, downs: 0, my_value: 0 }
   ];
   function renderIdeas(sample = false) {
@@ -367,6 +369,8 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
         react.append(button);
       }
       row.append(main, react);
+      // 운영자 한마디: 모두에게 보이는 한 줄. 운영자는 아래 버튼 줄에서 쓰고 고친다(비우면 지워짐).
+      if (idea.note) row.append(el('p', 'ab-idea-note', '— ' + idea.note));
       if (canModerate && !sample) {
         const mod = el('div', 'ab-mod');
         for (const [label, status] of [...(NEXT_STATUS[idea.status] || []), ['숨김', 'hidden']]) {
@@ -378,6 +382,28 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
           });
           mod.append(button);
         }
+        const noteButton = el('button', null, idea.note ? '운영: 한마디 고치기' : '운영: 한마디'); noteButton.type = 'button';
+        noteButton.addEventListener('click', () => {
+          editingNote = true;
+          const input = el('input', 'ab-note-input'); input.type = 'text'; input.maxLength = 80;
+          input.value = idea.note || ''; input.placeholder = '예: 난이도 높음 ㅠㅠ (비우면 지워져요)';
+          input.setAttribute('aria-label', '운영자 한마디');
+          const save = el('button', null, '저장'), cancel = el('button', null, '취소');
+          save.type = cancel.type = 'button';
+          const done = () => { editingNote = false; renderIdeas(); };
+          const submit = async () => {
+            save.disabled = input.disabled = true;
+            try { await backend.setImprovementIdeaNote(idea.id, input.value); editingNote = false; await loadIdeas(); }
+            catch (err) { showError(err.message || '한마디 저장 실패'); save.disabled = input.disabled = false; }
+          };
+          save.addEventListener('click', submit); cancel.addEventListener('click', done);
+          input.addEventListener('keydown', e => {
+            if (e.key === 'Enter') { e.preventDefault(); submit(); }
+            if (e.key === 'Escape') { e.stopPropagation(); done(); }
+          });
+          mod.replaceChildren(input, save, cancel); input.focus();
+        });
+        mod.append(noteButton);
         row.append(mod);
       }
       return row;
@@ -397,6 +423,7 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
     setTimeout(() => { aiButton.textContent = 'AI로 정리'; aiButton.disabled = false; }, 2500);
   });
   async function loadIdeas() {
+    if (editingNote) return;
     const token = generation;
     aiButton.hidden = !canRunAi;
     try {
@@ -527,7 +554,7 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
     if (opened) return;
     onExit = exitCallback; opened = true; generation++; panel.hidden = false;
     posts = []; hasOlder = false; unseen = 0; newPill.hidden = true; slidePaused = false;
-    pollCount = 0; ideas = [];
+    pollCount = 0; ideas = []; editingNote = false;
     render(); live.classList.add('is-off'); live.textContent = '연결 중';
     lastApproved = null; refreshAccess(); loadProjects();
     ideaList.replaceChildren(el('p', 'ab-note', '불러오는 중…'));

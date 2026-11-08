@@ -338,6 +338,14 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
       const { api } = await requireMember();
       return unwrap(await api.rpc('set_improvement_idea_status', { p_id: id, p_status: status })) === true;
     },
+    // 운영자 한마디(최대 80자, 빈 문자열이면 지움). 권한은 DB가 검사한다.
+    async setImprovementIdeaNote(id, note) {
+      if (!UUID.test(id)) throw new Error('의견이 올바르지 않습니다.');
+      const text = String(note ?? '').trim();
+      if (text.length > 80) throw new Error('한마디는 80자 이하로 적어 주세요.');
+      const { api } = await requireMember();
+      return unwrap(await api.rpc('set_improvement_idea_note', { p_id: id, p_note: text })) === true;
+    },
     // AI 정리 버튼 표시용(지정된 한 계정만). 실제 권한은 DB 함수가 다시 검사한다.
     async canRunAiSummary() {
       const { api } = await requireMember();
