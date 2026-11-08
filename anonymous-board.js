@@ -188,7 +188,7 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
         <div class="ab-ask-list"></div>
       </section>
       <section class="ab-tile ab-idea-tile" aria-label="서비스 개선 의견">
-        <div class="ab-tile-head"><div><span class="ab-label">Ideas</span><h3>서비스 개선 의견</h3></div></div>
+        <div class="ab-tile-head"><div><span class="ab-label">Ideas</span><h3>서비스 개선 의견</h3></div><button class="ab-ai" type="button" hidden>AI로 정리</button></div>
         <div class="ab-idea-list"></div>
       </section>
       <section class="ab-tile ab-chat-tile" aria-label="익명 실시간 채팅">
@@ -384,8 +384,20 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
     const note = sample ? [el('p', 'ab-sample', '예시 화면이에요 · 개선 의견이 올라오면 실제 내용으로 바뀝니다')] : [];
     ideaList.replaceChildren(...note, ...rows);
   }
+  // 운영자 전용: 채팅을 AI로 정리해 `검토 대기`로 넣는다. 공개는 운영자가 항목마다 직접 누른다.
+  const aiButton = $('.ab-ai');
+  aiButton.addEventListener('click', async () => {
+    aiButton.disabled = true; aiButton.textContent = '정리 중…';
+    try {
+      const { saved } = await backend.summarizeImprovementIdeas();
+      aiButton.textContent = saved ? `${saved}개 검토 대기` : '새 의견 없음';
+      await loadIdeas();
+    } catch (err) { showError(err.message || 'AI 정리 실패'); aiButton.textContent = 'AI로 정리'; }
+    setTimeout(() => { aiButton.textContent = 'AI로 정리'; aiButton.disabled = false; }, 2500);
+  });
   async function loadIdeas() {
     const token = generation;
+    aiButton.hidden = !canModerate;
     try {
       const rows = await backend.listImprovementIdeas();
       if (opened && generation === token) { ideas = rows; renderIdeas(!rows.length); }

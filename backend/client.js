@@ -338,6 +338,17 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
       const { api } = await requireMember();
       return unwrap(await api.rpc('set_improvement_idea_status', { p_id: id, p_status: status })) === true;
     },
+    // 운영자: Vercel 함수가 익명 채팅을 AI로 읽고 많이 나온 의견 3개를 `검토 대기`에 넣는다. 키는 서버에만 있다.
+    async summarizeImprovementIdeas() {
+      const { api } = await requireMember();
+      const { data } = await api.auth.getSession();
+      const token = data?.session?.access_token;
+      if (!token) throw new Error('먼저 로그인해주세요.');
+      const res = await fetch('/api/summarize-ideas', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || (res.status === 404 ? 'AI 정리는 배포된 사이트에서만 쓸 수 있어요.' : 'AI 정리에 실패했어요.'));
+      return body;
+    },
     async getProjectFeedback(projectId) {
       if (!UUID.test(projectId)) throw new Error('존재하지 않는 프로젝트입니다.');
       const { api } = await requireMember();

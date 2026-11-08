@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { villageBackend } from './backend/client.js?v=update-announce';
+import { villageBackend } from './backend/client.js?v=ai-ideas1';
 import { mountAuth } from './auth-ui.js';
 import { mountChat } from './chat-ui.js';
 import { mountCommentMailbox } from './comment-mailbox.js?v=auto-open';
 import { createQualityControl } from './quality.js';
-import { addStatsBuilding } from './stats-building.js';
-import { mountAnonymousBoard } from './anonymous-board.js?v=navy-theme3';
+import { addStatsBuilding } from './stats-building.js?v=hut4';
+import { mountAnonymousBoard } from './anonymous-board.js?v=ai-ideas1';
 import { addAnonymousBoardObject } from './board-object.js?v=aframe-sign2';
 import { smooth, hash, createHeightAt, makeSnowBump, addGround } from './terrain.js?v=split1';
 import { mountTutorial } from './tutorial.js?v=3';
