@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { addMailboxes } from './mailboxes.js?v=rise3';
 
 export function addVillage(scene, ctx) {
-  const { places, hub, heightAt, rng, lighthouse, statsSite } = ctx;
+  const { places, hub, heightAt, rng, lighthouse, statsSite, fireSpot: pinnedFire } = ctx;
   const root = new THREE.Group();
   root.name = 'village';
   scene.add(root);
@@ -322,7 +322,9 @@ export function addVillage(scene, ctx) {
     return null;
   }
   function drift(x, z, r = 0.6) { instance(sphere, snow, x, heightAt(x, z) - 0.08, z, r, r * 0.28, r * 0.74, rand(0, TAU)); }
-  const fireSpot = findSpot(1.4, 6.3, 9.5) || findSpot(1.4, 7, 28);
+  // 모닥불(산타·게시판이 함께 따라옴)은 고정 자리가 있으면 거기에 둔다. 다른 건물을 옮겨도 광장이 움직이지 않게.
+  const fireSpot = pinnedFire ? (occupied.push({ x: pinnedFire.x, z: pinnedFire.z, r: 1.4 }), { x: pinnedFire.x, z: pinnedFire.z })
+    : findSpot(1.4, 6.3, 9.5) || findSpot(1.4, 7, 28);
   let fireLight = null;
   if (fireSpot) {
     const { x, z } = fireSpot, y = heightAt(x, z);

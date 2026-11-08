@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { villageBackend } from './backend/client.js?v=ai-owner1';
+import { villageBackend } from './backend/client.js?v=note1';
 import { mountAuth } from './auth-ui.js';
 import { mountChat } from './chat-ui.js';
 import { mountCommentMailbox } from './comment-mailbox.js?v=auto-open';
 import { createQualityControl } from './quality.js';
 import { addStatsBuilding } from './stats-building.js?v=hut4';
-import { mountAnonymousBoard } from './anonymous-board.js?v=ai-owner1';
+import { mountAnonymousBoard } from './anonymous-board.js?v=note1';
 import { addAnonymousBoardObject } from './board-object.js?v=aframe-sign2';
 import { smooth, hash, createHeightAt, makeSnowBump, addGround } from './terrain.js?v=split1';
 import { mountTutorial } from './tutorial.js?v=3';
@@ -901,16 +901,17 @@ let santa = null;
 // 주인이 있는 이글루 번호. 마을 모듈이 늦게 불러와져도 우편함을 맞게 세운다.
 let ownedHomeIds = [];
 let polarBear = null;
-import('./village.js?v=lowtri2')
+import('./village.js?v=fire-pin1')
   .then(m => {
-    village = m.addVillage(scene, { places, hub: HUB, heightAt, rng, lighthouse: LIGHTHOUSE, statsSite: STATS_SITE });
+    // 모닥불은 관측소를 옮기기 전 자리(도로 오른쪽)에 고정한다. 난수 배치에 맡기면 다른 건물을 옮길 때마다 산타·게시판까지 함께 움직인다.
+    village = m.addVillage(scene, { places, hub: HUB, heightAt, rng, lighthouse: LIGHTHOUSE, statsSite: STATS_SITE, fireSpot: { x: 5.4, z: 12.01 } });
     commentMailbox.setWorld(village);
     village.setOwnedMailboxes(ownedHomeIds);
     // 게시판은 모닥불 왼쪽 앞(옛 벤치 자리)에 세우고, 정면에서 오른쪽(모닥불 쪽)으로 약 10° 돌린다.
     // 게시판은 모닥불 바로 왼쪽(화면 기준)에 둔다. 모닥불 자리가 없으면 예전 벤치 자리.
     const signSpot = village.fireSpot ? { x: village.fireSpot.x - 2.1, z: village.fireSpot.z + 0.2 } : village.boardSpot;
     if (signSpot) boardObject.place(signSpot.x, signSpot.z, Math.PI / 14);
-    import('./polar-bear.js?v=lowtri1')
+    import('./polar-bear.js?v=pet2')
       .then(({ addPolarBear }) => addPolarBear(scene, { obstacles: village.walkingObstacles, heightAt }))
       .then(bear => { polarBear = bear; })
       .catch(error => console.warn('북극곰을 불러오지 못했어요:', error));
@@ -1175,6 +1176,11 @@ addEventListener('pointermove', e => {
 canvas.addEventListener('click', e => {
   if (dragged) return;
   pointer.set(e.clientX / W() * 2 - 1, -(e.clientY / H()) * 2 + 1);
+  if (mode === 'bear') {   // 곰을 또 누르면 하트 하나 더, 다른 곳을 누르면 바로 지도로 돌아간다
+    ray.setFromCamera(pointer, camera);
+    if (polarBear?.hit(ray)) polarBear.pet(camPos); else leave();
+    return;
+  }
   // 마을 지도에서 나무 게시판을 누르면 익명 메모 UI를 연다.
   if (mode === 'map') {
     ray.setFromCamera(pointer, camera);
@@ -1182,6 +1188,8 @@ canvas.addEventListener('click', e => {
       openVillageBoard();
       return;
     }
+    // 북극곰을 누르면 가까이 날아가 보여 주고, 곰은 멈춰서 돌아보며 하트를 띄운다.
+    if (polarBear?.hit(ray)) { showBear(); return; }
   }
   if (mode === 'room' && room === lighthouseRoom) {
     if (lighthouseRoom.pickAction(pointer) === 'mail') openLighthouseMail();
@@ -1468,12 +1476,28 @@ function goOutside(ig) {
     setBar(ig.house ? '등대 입구' : `${ig.mine ? '내' : ig.owner + '의'} 이글루 앞이에요`, [['안으로 들어가기', () => goInside(ig), true], ['마을로 돌아가기', leave]]);
   });
 }
+// 곰 가까이 보기: 지금 보는 방향 그대로 곰 앞 약 4m로 다가갔다가, 쓰다듬기가 끝나면 원래 지도 시점으로 돌아간다.
+let bearTimer = 0;
+function showBear() {
+  const p = polarBear.root.position;
+  const dx = camera.position.x - p.x, dz = camera.position.z - p.z, len = Math.hypot(dx, dz) || 1;
+  camPos.set(p.x + dx / len * 4.2, p.y + 1.9, p.z + dz / len * 4.2);
+  camLook.set(p.x, p.y + 0.55, p.z);
+  mode = 'bear';
+  ring.visible = false;
+  hovered = null;
+  canvas.style.cursor = '';
+  polarBear.pet(camPos, 0.9);   // 카메라가 거의 다 다가온 뒤(약 0.9초)에 돌아보고 뛴다
+  clearTimeout(bearTimer);
+  bearTimer = setTimeout(() => { if (mode === 'bear') leave(); }, 3900);
+}
 function leave() {
+  clearTimeout(bearTimer);
   mode = 'map';
   applyView();
   setBar(mapHintText(), [], 'hint');
 }
-addEventListener('keydown', e => { if (e.key === 'Escape' && mode === 'in') leave(); }); // 익명 게시판 Escape는 anonymous-board.js에서 처리
+addEventListener('keydown', e => { if (e.key === 'Escape' && (mode === 'in' || mode === 'bear')) leave(); }); // 익명 게시판 Escape는 anonymous-board.js에서 처리
 
 const v = new THREE.Vector3();
 const clock = new THREE.Clock();
@@ -1531,7 +1555,7 @@ function frame() {
   }
   mountainTitle.position.copy(camera.position).lerp(mountainTitleAnchor, TITLE_DEPTH);
   projectBeams.forEach(beam => {
-    beam.visible = mode === 'map' || mode === 'in';
+    beam.visible = mode === 'map' || mode === 'in' || mode === 'bear';
     beam.rotation.y = Math.atan2(camera.position.x - beam.position.x, camera.position.z - beam.position.z);
   });
 

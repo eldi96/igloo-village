@@ -92,7 +92,59 @@ export async function addPolarBear(scene, { obstacles, heightAt, height = 1.12 }
     map: new THREE.CanvasTexture(canvas), transparent: true, depthWrite: false, opacity: 0.8
   }));
   shadow.rotation.x = -Math.PI / 2;shadow.position.y = 0.035;root.add(shadow);
+  // 클릭 판정은 뼈대가 움직이는 메시 대신 보이지 않는 상자로 가볍게 한다.
+  const hitBox = new THREE.Mesh(new THREE.BoxGeometry(width * 1.1, height * 1.05, length * 1.05), new THREE.MeshBasicMaterial({ visible: false }));
+  hitBox.position.y = height * 0.5;root.add(hitBox);
   scene.add(root);
+  // 쓰다듬기: 멈춰서 카메라 쪽으로 돌아보고, 통통 두 번 뛰고, 머리 위로 하트가 떠오른 뒤 다시 걷는다.
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const heartCanvas = document.createElement('canvas');heartCanvas.width = heartCanvas.height = 64;
+  const ink = heartCanvas.getContext('2d');
+  ink.fillStyle = '#ff8fa3';ink.beginPath();ink.moveTo(32, 54);
+  ink.bezierCurveTo(6, 36, 4, 14, 20, 11);ink.bezierCurveTo(27, 10, 31, 15, 32, 19);
+  ink.bezierCurveTo(33, 15, 37, 10, 44, 11);ink.bezierCurveTo(60, 14, 58, 36, 32, 54);ink.fill();
+  ink.fillStyle = 'rgba(255,255,255,.7)';ink.beginPath();ink.ellipse(21, 21, 4, 6, -0.5, 0, Math.PI * 2);ink.fill();
+  const heartTexture = new THREE.CanvasTexture(heartCanvas);heartTexture.colorSpace = THREE.SRGBColorSpace;
+  const hearts = [];
+  const easeOut = t => 1 - Math.pow(1 - t, 3), easeInOut = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const clamp01 = t => Math.min(1, Math.max(0, t));
+  function spawnHeart(delay) {
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: heartTexture, transparent: true, depthWrite: false, opacity: 0, toneMapped: false }));
+    sprite.visible = false;scene.add(sprite);
+    hearts.push({ sprite, t: -delay, drift: (Math.random() - 0.5) * 0.5, x: 0, y: 0, z: 0 });
+  }
+  function updateHearts(dt) {
+    const fx = Math.sin(root.rotation.y) * length * 0.32, fz = Math.cos(root.rotation.y) * length * 0.32;
+    for (let i = hearts.length - 1; i >= 0; i--) {
+      const h = hearts[i];h.t += dt;
+      if (h.t < 0) continue;
+      if (!h.sprite.visible) { h.sprite.visible = true;h.x = root.position.x + fx;h.y = root.position.y + height * 1.05;h.z = root.position.z + fz; }
+      const life = clamp01(h.t / 1.3);
+      if (life >= 1) { scene.remove(h.sprite);h.sprite.material.dispose();hearts.splice(i, 1);continue; }
+      h.sprite.position.set(h.x + h.drift * life, h.y + easeOut(life) * 0.85, h.z);
+      h.sprite.material.opacity = Math.min(1, h.t / 0.15) * (1 - clamp01((life - 0.65) / 0.35));
+      h.sprite.scale.setScalar(0.3 * (0.6 + 0.4 * easeOut(clamp01(h.t / 0.2))));
+    }
+  }
+  const PET_TIME = 2.4;
+  let pet = null;
+  // wait: 카메라가 다가오는 동안 곰은 멈춰서 기다렸다가, 도착하면 돌아보고 뛴다.
+  function startPet(cameraPosition, wait = 0) {
+    if (pet) { spawnHeart(Math.max(0.05, -pet.t));return; }   // 쓰다듬는 중에 또 누르면 하트만 하나 더
+    const to = Math.atan2(cameraPosition.x - root.position.x, cameraPosition.z - root.position.z);
+    pet = { t: -wait, from: root.rotation.y, to, ground: root.position.y };
+    spawnHeart(wait + 0.05);spawnHeart(wait + 0.4);spawnHeart(wait + 0.75);
+  }
+  function petting(dt) {
+    pet.t += Math.min(dt, 0.1);
+    const t = Math.max(0, pet.t), turn = easeOut(clamp01(t / 0.35)) * (1 - easeInOut(clamp01((t - (PET_TIME - 0.45)) / 0.45)));
+    const diff = Math.atan2(Math.sin(pet.to - pet.from), Math.cos(pet.to - pet.from));
+    root.rotation.y = pet.from + diff * turn;
+    const k = (t - 0.35) / 0.38;   // 0.38초짜리 통통 두 번
+    const hop = !reduceMotion && k > 0 && k < 2 ? 0.13 * Math.sin(Math.PI * (k % 1)) : 0;
+    root.position.y = pet.ground + hop;
+    if (t >= PET_TIME) { pet = null;speed = 0; }
+  }
   // 처음에는 호수 앞쪽의 안전한 길에서 보여 주고 이후 같은 순환 길을 걷는다.
   let walked = 0, speed = 0.55, along = 0, nearestSpawn = Infinity;
   route.samples.forEach((p, i) => {
@@ -102,6 +154,8 @@ export async function addPolarBear(scene, { obstacles, heightAt, height = 1.12 }
   });
   const current = {}, ahead = {}, a = {}, b = {}, c = {}, d = {};
   function place(dt) {
+    updateHearts(Math.min(dt, 0.1));
+    if (pet) { petting(dt);return; }
     // 굽은 길은 미리 속도를 낮춘다. 좁은 모서리에서도 몸을 휙 돌리지 않는다.
     let curvature = 0;
     for (let look = 0; look <= 1.05; look += 0.15) {
@@ -127,5 +181,6 @@ export async function addPolarBear(scene, { obstacles, heightAt, height = 1.12 }
   }
   place(0);
   return { update: place, root, navigation, route,
+    hit: ray => ray.intersectObject(hitBox, false).length > 0, pet: startPet,
     metrics: { height, length, width, radius, gaitSpeed, triangles: meshes.reduce((n, m) => n + (m.geometry.index?.count || m.geometry.attributes.position.count) / 3, 0) } };
 }
