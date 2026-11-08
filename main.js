@@ -217,8 +217,9 @@ const ROWS = [
   [9, [-27, -14.5, 14.5, 27]]
 ];
 const LIGHTHOUSE = { x: -33, z: -15, radius: 2.2 };
-const STATS_YAW = Math.atan2(-LIGHTHOUSE.x, 45 - LIGHTHOUSE.z) + Math.PI / 36;
-const STATS_SITE = { x: -36, z: -9, radius: 2.9, scale: .77, yaw: STATS_YAW };
+// 관측소는 등대 앞 왼쪽에 바짝 붙여(중심 거리 약 4.8) 한 쌍처럼 보이게 하고, 문은 마을 쪽으로 살짝 틀어 둔다.
+const STATS_YAW = Math.atan2(-LIGHTHOUSE.x, 45 - LIGHTHOUSE.z) + Math.PI / 9;
+const STATS_SITE = { x: LIGHTHOUSE.x - 2.4, z: LIGHTHOUSE.z + 4.15, radius: 2.3, scale: .6, yaw: STATS_YAW };
 STATS_SITE.doorX = STATS_SITE.x + (.88 * Math.cos(STATS_YAW) + 3.5 * Math.sin(STATS_YAW)) * STATS_SITE.scale;
 STATS_SITE.doorZ = STATS_SITE.z + (-.88 * Math.sin(STATS_YAW) + 3.5 * Math.cos(STATS_YAW)) * STATS_SITE.scale;
 // 행에서 벗어나는 이글루는 [x, z]로 직접 적는다
@@ -1362,7 +1363,7 @@ async function openVisitDashboard() {
     if (!await villageBackend.canViewObservatory()) return setBar('개발팀 전용 공간입니다.', [['마을로 돌아가기', leave]]);
     if (mode !== 'in' || auth.user?.id !== userId) return;
     if (!visitDashboard) {
-      const { createVisitDashboard } = await import('./visit-dashboard.js?v=team-access');
+      const { createVisitDashboard } = await import('./visit-dashboard.js?v=clear2');
       visitDashboard = createVisitDashboard(villageBackend, { getMember: () => auth.member, onExit: closeVisitDashboard });
     }
     if (mode !== 'in') return;
