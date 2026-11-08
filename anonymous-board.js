@@ -26,7 +26,7 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
     .ab-top{display:flex;align-items:center;gap:14px;padding:4px 8px 0 12px}
     .ab-brand{font-weight:700;letter-spacing:-.01em;color:var(--ink);font-size:1.133em}
     .ab-top .ab-back{margin-left:auto;font-size:.85em}
-    .ab-bento{flex:1;min-height:0;display:grid;gap:14px;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:12px;grid-template-rows:minmax(0,1.05fr) minmax(0,1.35fr) minmax(0,1.2fr);
+    .ab-bento{flex:1;min-height:0;display:grid;gap:14px;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:12px;grid-template-rows:minmax(0,1.05fr) minmax(0,1fr) minmax(0,1.55fr);
       grid-template-areas:"new chat" "ask chat" "idea chat"}
     .ab-tile{position:relative;min-height:0;min-width:0;overflow:hidden;border-radius:24px;container-type:size;
       background:linear-gradient(160deg,rgba(255,252,246,.74),rgba(250,242,230,.6));
@@ -151,7 +151,7 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
     @media(max-width:860px){
       .ab-surface{padding:10px;gap:10px;border-radius:26px;font-size:15px;width:calc(100vw - 16px);height:calc(100dvh - 20px)}
       .ab-bento{display:flex;flex-direction:column;overflow-y:auto}
-      .ab-new-tile{flex:0 0 190px}.ab-chat-tile{flex:0 0 72dvh}.ab-ask-tile{flex:0 0 250px}.ab-idea-tile{flex:0 0 300px}
+      .ab-new-tile{flex:0 0 190px}.ab-chat-tile{flex:0 0 72dvh}.ab-ask-tile{flex:0 0 210px}.ab-idea-tile{flex:0 0 340px}
       .ab-slide-body h4{font-size:1.1em}.ab-post{max-width:90%}}
     .ab-art{transition:transform .25s cubic-bezier(.23,1,.32,1)}
     @keyframes ab-tile-in{from{opacity:0;transform:translateY(10px)}}
@@ -349,7 +349,8 @@ export function mountAnonymousBoard(backend, { getMember = () => null, getOwnerN
       const main = el('div', 'ab-idea-main'), title = el('div', 'ab-idea-title');
       title.append(el('b', null, idea.title), el('span', 'ab-tag', idea.category));
       if (STATUS_LABEL[idea.status]) title.append(el('span', 'ab-tag st-' + idea.status, STATUS_LABEL[idea.status]));
-      main.append(title, el('small', null, (idea.summary ? idea.summary + ' · ' : '') + '채팅에서 ' + idea.mentions + '번 언급'));
+      main.append(title);
+      if (idea.summary) main.append(el('small', null, idea.summary));
       const react = el('div', 'ab-react'), votable = idea.status === 'voting';
       for (const [value, icon, count, extra] of [[1, '👍', idea.ups, ''], [-1, '👎', idea.downs, ' is-down']]) {
         const button = el('button', (idea.my_value === value ? 'is-on' : '') + extra); button.type = 'button';
