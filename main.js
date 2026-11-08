@@ -1432,7 +1432,7 @@ async function goInside(ig, projectId = null) {
     });
     room = lighthouseRoom;
   } else {
-    if (!iglooRoom) iglooRoom = (await import('./room.js?v=react-row-up')).createRoom({ canvas, renderer, backend: villageBackend, onRoomPublicChange: value => { if (currentRoomIg) currentRoomIg.isPublic = value; }, onNotificationsRead: () => commentMailbox.refresh(), onExteriorLightChange: () => syncVillage().catch(() => {}) });
+    if (!iglooRoom) iglooRoom = (await import('./room.js?v=mintyellow1')).createRoom({ canvas, renderer, backend: villageBackend, onRoomPublicChange: value => { if (currentRoomIg) currentRoomIg.isPublic = value; }, onNotificationsRead: () => commentMailbox.refresh(), onExteriorLightChange: () => syncVillage().catch(() => {}) });
     room = iglooRoom;
   }
   room.setAspect?.(W() / H());

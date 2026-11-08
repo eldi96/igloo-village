@@ -136,7 +136,7 @@ test('feedback rejects invalid IDs, blank or oversized comments and unsupported 
   await assert.rejects(backend.getProjectFeedback('invalid'), /프로젝트/);
   await assert.rejects(backend.addProjectComment(id, '   '), /댓글/);
   await assert.rejects(backend.addProjectComment(id, 'a'.repeat(1001)), /댓글/);
-  await assert.rejects(backend.setProjectReaction(id, 'invalid', true), /반응/);
+  await assert.rejects(backend.addProjectReaction(id, 'invalid'), /반응/);
   assert.equal(loaded, false);
 });
 

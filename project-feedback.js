@@ -1,5 +1,5 @@
 // 프로젝트별 댓글과 반응. 다른 카드로 바뀐 뒤 도착한 응답은 표시하지 않는다.
-export function mountProjectFeedback(root, backend, { onViewed = () => {} } = {}) {
+export function mountProjectFeedback(root, backend, { onViewed = () => {}, onReact = () => {}, onLoaded = () => {}, isOwner = () => false } = {}) {
   root.innerHTML = `<div class="feedback-head"><h3>피드백</h3><div class="feedback-reactions" aria-label="프로젝트 반응"><button type="button" data-emoji="👍" aria-label="좋아요" aria-pressed="false" disabled><svg class="reaction-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="10" width="4.6" height="10.5" rx="2" fill="#7cc9e8"/><path d="M8.6 10.4 12 4.2c.4-.8 1.4-1.2 2.2-.8 1 .5 1.4 1.6 1.1 2.6l-.8 3h4.1c1.5 0 2.6 1.4 2.3 2.9l-1.3 6.5c-.25 1.2-1.3 2.1-2.5 2.1H10.4c-1 0-1.8-.8-1.8-1.8z" fill="#a8e1f5"/><path d="M8.6 17.4c3.8.9 7.6.5 11.4-1.2l-.4 2.4c-.25 1.2-1.3 2.1-2.5 2.1H10.4c-1 0-1.8-.8-1.8-1.8z" fill="#7cc9e8"/><ellipse cx="12.6" cy="7.4" rx="1.3" ry="2.1" transform="rotate(28 12.6 7.4)" fill="#fff" opacity=".75"/></svg><span>0</span></button><button type="button" data-emoji="❤️" aria-label="하트" aria-pressed="false" disabled><svg class="reaction-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21c-.4 0-.8-.15-1.1-.42C6.2 16.5 2.5 13.1 2.5 8.9 2.5 5.9 4.8 3.6 7.6 3.6c1.7 0 3.3.85 4.4 2.2 1.1-1.35 2.7-2.2 4.4-2.2 2.8 0 5.1 2.3 5.1 5.3 0 4.2-3.7 7.6-8.4 11.68-.3.27-.7.42-1.1.42z" fill="#ffb3c7"/><path d="M4.2 12.6c1.6 2.4 4.2 4.7 7.8 7.8 3.6-3.1 6.2-5.4 7.8-7.8-1.9 2.2-4.6 4.4-7.8 6.9-3.2-2.5-5.9-4.7-7.8-6.9z" fill="#f08fab"/><ellipse cx="7.6" cy="7.6" rx="2.2" ry="1.4" transform="rotate(-30 7.6 7.6)" fill="#fff" opacity=".75"/></svg><span>0</span></button></div></div><p class="feedback-status" role="status"></p><ul class="feedback-list" aria-label="프로젝트 댓글"></ul><form class="feedback-form"><label>댓글 남기기<textarea name="comment" maxlength="1000" rows="3" required placeholder="사용해 본 소감이나 개선 아이디어를 남겨 주세요."></textarea></label><div class="feedback-submit"><span>최대 1,000자</span><button type="submit" class="room-btn">댓글 등록</button></div></form>`;
   const list = root.querySelector('.feedback-list');
   const status = root.querySelector('.feedback-status');
@@ -7,18 +7,21 @@ export function mountProjectFeedback(root, backend, { onViewed = () => {} } = {}
   const input = form.elements.comment;
   const submit = form.querySelector('button');
   const buttons = [...root.querySelectorAll('[data-emoji]')];
-  let projectId = null, generation = 0, userId = null, reactions = [], busy = false, reactionBusy = new Set(), loading = false;
+  let filledFor = null, projectId = null, generation = 0, userId = null, reactions = [], busy = false, reactionBusy = new Set(), loading = false;
   function controls() {
     input.disabled = submit.disabled = !userId || busy || loading;
     list.querySelectorAll('button, textarea').forEach(control => { control.disabled = !userId || busy || loading; });
     buttons.forEach(button => { button.disabled = !userId || busy || loading;
       button.setAttribute('aria-busy', String(reactionBusy.has(button.dataset.emoji))); });
   }
+  // 한국 날짜 기준 오늘 내가 누른 반응(날짜 칸이 없던 옛 기록은 오늘로 본다)
+  const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date());
+  const mineToday = row => row.member_id === userId && (row.reacted_on ?? today()) === today();
   function paintReactions() {
     for (const button of buttons) {
       const rows = reactions.filter(row => row.emoji === button.dataset.emoji);
-      button.querySelector('span').textContent = rows.length;
-      button.setAttribute('aria-pressed', String(rows.some(row => row.member_id === userId)));
+      button.querySelector('span').textContent = rows.length > 99 ? '99+' : rows.length;
+      button.setAttribute('aria-pressed', String(rows.some(mineToday)));
     }
   }
   const expanded = new Set();
@@ -168,6 +171,11 @@ export function mountProjectFeedback(root, backend, { onViewed = () => {} } = {}
     if (token !== generation) return;
     reactions = result.reactions;
     paintReactions();
+    if (filledFor !== id) {   // 프로젝트를 처음 열 때 받은 반응 수만큼 이미지 창에 쌓아 둔다
+      filledFor = id;
+      const svgOf = Object.fromEntries(buttons.map(button => [button.dataset.emoji, button.querySelector('svg').outerHTML]));
+      onLoaded(reactions.filter(row => svgOf[row.emoji]).map(row => ({ svg: svgOf[row.emoji], x: row.drop_x })));
+    }
     if (includeComments) paintComments(result.comments);
   }
   form.addEventListener('submit', async event => {
@@ -184,11 +192,14 @@ export function mountProjectFeedback(root, backend, { onViewed = () => {} } = {}
   buttons.forEach(button => button.addEventListener('click', async () => {
     if (!projectId || !userId || busy || reactionBusy.has(button.dataset.emoji) || loading) return;
     const id = projectId, token = generation, emoji = button.dataset.emoji;
-    const remove = reactions.some(row => row.emoji === emoji && row.member_id === userId);
+    const svg = button.querySelector('svg').outerHTML;
+    if (isOwner()) { onReact(emoji, svg); return; }   // 내 이글루: 시험용으로 몇 번이든 떨어뜨리고 DB에는 쓰지 않는다
+    if (reactions.some(row => row.emoji === emoji && mineToday(row))) return;   // 오늘 이미 눌렀다
     reactionBusy.add(emoji);
     controls();
+    const dropX = onReact(emoji, svg);   // 누르자마자 이미지 창에 떨어뜨리고, 떨어진 가로 위치를 함께 저장한다
     try {
-      await backend.setProjectReaction(id, emoji, !remove);
+      await backend.addProjectReaction(id, emoji, dropX);
       if (token !== generation) return;
       await refresh(id, token, false);
     } catch (error) {
@@ -230,6 +241,6 @@ export function mountProjectFeedback(root, backend, { onViewed = () => {} } = {}
         if (token === generation) { loading = false; controls(); }
       }
     },
-    close() { expanded.clear(); drafts.clear(); replyTarget = null; generation++; projectId = userId = null; busy = loading = false; reactionBusy.clear(); controls(); }
+    close() { filledFor = null; expanded.clear(); drafts.clear(); replyTarget = null; generation++; projectId = userId = null; busy = loading = false; reactionBusy.clear(); controls(); }
   };
 }
