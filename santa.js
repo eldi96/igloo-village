@@ -29,7 +29,7 @@ export async function addSanta(scene, { fireSpot, heightAt, height = 1.5 }) {
   santa.position.set(x, heightAt(x, z) - 0.015, z);
   model.traverse(object => {
     if (!object.isMesh) return;
-    object.castShadow = true;
+    object.castShadow = false;   // 그림자용으로 한 번 더 그리지 않게(삼각형 약 5만 6천 절약)
     object.receiveShadow = true;
   });
   scene.add(santa);

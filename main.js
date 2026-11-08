@@ -920,7 +920,7 @@ let santa = null;
 // 주인이 있는 이글루 번호. 마을 모듈이 늦게 불러와져도 우편함을 맞게 세운다.
 let ownedHomeIds = [];
 let polarBear = null;
-import('./village.js?v=mail-rise3')
+import('./village.js?v=lowtri2')
   .then(m => {
     village = m.addVillage(scene, { places, hub: HUB, heightAt, rng, lighthouse: LIGHTHOUSE, statsSite: STATS_SITE });
     commentMailbox.setWorld(village);
@@ -929,12 +929,12 @@ import('./village.js?v=mail-rise3')
     // 게시판은 모닥불 바로 왼쪽(화면 기준)에 둔다. 모닥불 자리가 없으면 예전 벤치 자리.
     const signSpot = village.fireSpot ? { x: village.fireSpot.x - 2.1, z: village.fireSpot.z + 0.2 } : village.boardSpot;
     if (signSpot) boardObject.place(signSpot.x, signSpot.z, Math.PI / 14);
-    import('./polar-bear.js?v=meshopt-webp')
+    import('./polar-bear.js?v=lowtri1')
       .then(({ addPolarBear }) => addPolarBear(scene, { obstacles: village.walkingObstacles, heightAt }))
       .then(bear => { polarBear = bear; })
       .catch(error => console.warn('북극곰을 불러오지 못했어요:', error));
     renderer.shadowMap.needsUpdate = true;
-    import('./santa.js?v=meshopt-webp')
+    import('./santa.js?v=lowtri1')
       .then(({ addSanta }) => addSanta(scene, { fireSpot: village.fireSpot, heightAt, height: R * 0.8 }))
       .then(character => { santa = character; renderer.shadowMap.needsUpdate = true; })
       .catch(error => console.warn('산타 모델을 불러오지 못했어요:', error));
