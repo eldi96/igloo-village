@@ -1190,7 +1190,7 @@ canvas.addEventListener('click', e => {
     if (lighthouseRoom.consumeDrag()) return;
     const action = lighthouseRoom.pickAction(pointer);
     if (action === 'mail') openLighthouseMail();
-    // 자료보관함은 아직 만들기 전이라 안내만 잠깐 보여 준다.
+    // 책장: 자료보관함(누구나 보기, 강사·자료 담당은 올리기).
     else if (action === 'archive') archive?.open();
     else if (action === 'light') lighthouseRoom.toggleLight();
     // 왼쪽 벽 액자: 업로드 현황 대시보드(강사·자료 담당만 내용이 보임).
@@ -1458,7 +1458,7 @@ async function goInside(ig, projectId = null) {
       onOpen: () => { bar.hidden = true; canvas.style.cursor = ''; lighthouseRoom.setMapHovered(false); },
       onClose: () => { bar.hidden = false; }
     });
-    if (!dashboard) dashboard = (await import('./lighthouse-dashboard.js?v=dash6')).createLighthouseDashboard({
+    if (!dashboard) dashboard = (await import('./lighthouse-dashboard.js?v=dash7')).createLighthouseDashboard({
       backend: villageBackend, getOwner: id => homeIgloo(Number(id)),
       // 최근 프로젝트를 누르면 등대를 나와 그 이글루의 해당 프로젝트로 바로 들어간다.
       onGoProject: (iglooId, projectId) => {

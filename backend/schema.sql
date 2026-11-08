@@ -1055,3 +1055,143 @@ language sql stable security invoker set search_path = '' as $$
 $$;
 revoke all on function public.can_view_observatory() from public, anon;
 grant execute on function public.can_view_observatory() to authenticated;
+
+-- ===== 등대 자료보관함 (instructor-materials.sql → material-editors.sql → material-categories.sql 순서와 같음) =====
+
+-- [instructor-materials.sql]
+-- 등대 책장의 자료보관함. 보기는 로그인 회원 전체, 올리기·수정·삭제는 강사 계정만.
+-- 분류: meeting(면담 예약) · website(웹사이트) · youtube(유튜브) · lecture(강의자료)
+-- 자료는 링크 하나 또는 파일 하나(PDF·이미지). 파일은 비공개 저장소 instructor-materials에 두고 서명 URL로 연다.
+-- 검증: verify-instructor-materials.sql (전부 롤백)
+
+create table if not exists public.instructor_materials (
+  id uuid primary key default gen_random_uuid(),
+  category text not null check (category in ('meeting', 'website', 'youtube', 'lecture')),
+  title text not null check (char_length(btrim(title)) between 1 and 120),
+  description text not null default '' check (char_length(description) <= 2000),
+  url text check (url is null or (char_length(url) <= 2048 and url ~* '^https?://[^[:space:]]+$')),
+  file_path text check (file_path is null or file_path ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}[.](pdf|jpg|png|webp)$'),
+  file_type text check (file_type is null or file_type in ('pdf', 'image')),
+  created_by uuid not null default auth.uid() references public.members(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check ((url is null) <> (file_path is null)),
+  check ((file_path is null) = (file_type is null))
+);
+create index if not exists instructor_materials_time on public.instructor_materials(created_at desc);
+alter table public.instructor_materials enable row level security;
+revoke all on public.instructor_materials from public, anon, authenticated;
+grant select, delete on public.instructor_materials to authenticated;
+grant insert(category, title, description, url, file_path, file_type) on public.instructor_materials to authenticated;
+grant update(category, title, description, url, file_path, file_type) on public.instructor_materials to authenticated;
+
+create policy instructor_materials_read on public.instructor_materials for select to authenticated
+  using ((select private.is_member()));
+create policy instructor_materials_insert on public.instructor_materials for insert to authenticated
+  with check ((select private.is_instructor()) and created_by = (select auth.uid()));
+create policy instructor_materials_update on public.instructor_materials for update to authenticated
+  using ((select private.is_instructor())) with check ((select private.is_instructor()));
+create policy instructor_materials_delete on public.instructor_materials for delete to authenticated
+  using ((select private.is_instructor()));
+
+create or replace function private.touch_instructor_material() returns trigger
+language plpgsql set search_path = '' as $$
+begin new.updated_at := now(); return new; end;
+$$;
+revoke all on function private.touch_instructor_material() from public, anon, authenticated;
+create trigger instructor_materials_touch before update on public.instructor_materials
+  for each row execute function private.touch_instructor_material();
+
+-- 파일 저장소: 비공개, 20MB, PDF·JPEG·PNG·WebP. 경로는 <강사 id>/<uuid>.<확장자>
+insert into storage.buckets(id, name, public, file_size_limit, allowed_mime_types)
+values ('instructor-materials', 'instructor-materials', false, 20971520, array['application/pdf', 'image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do nothing;
+create policy instructor_materials_files_read on storage.objects for select to authenticated
+  using (bucket_id = 'instructor-materials' and (select private.is_member()));
+create policy instructor_materials_files_insert on storage.objects for insert to authenticated
+  with check (bucket_id = 'instructor-materials' and (select private.is_instructor())
+    and (storage.foldername(name))[1] = (select auth.uid())::text);
+create policy instructor_materials_files_delete on storage.objects for delete to authenticated
+  using (bucket_id = 'instructor-materials' and (select private.is_instructor()));
+
+-- [material-editors.sql]
+-- 자료보관함 담당자 명단. 강사 계정 외에 이 명단에 든 계정도 자료를 올리고·고치고·지울 수 있다.
+-- instructor-materials.sql 다음에 실행한다. 처음 명단: eldi(사용자 요청, 강사 계정이 생기기 전 시험·관리용).
+-- 빼려면: delete from private.material_editors where member_id = (select id from auth.users where email = '<아이디>@igloo-village.eldi96.github.io');
+
+create table if not exists private.material_editors (
+  member_id uuid primary key references public.members(id) on delete cascade
+);
+revoke all on private.material_editors from public, anon, authenticated;
+
+create or replace function private.can_edit_materials() returns boolean
+language sql stable security definer set search_path = '' as $$
+  select (select private.is_instructor()) or exists (
+    select 1 from private.material_editors e join public.members m on m.id = e.member_id
+     where e.member_id = (select auth.uid()) and m.approved
+  );
+$$;
+revoke all on function private.can_edit_materials() from public, anon;
+grant execute on function private.can_edit_materials() to authenticated;
+
+-- 버튼 표시용. 실제 권한은 아래 정책이 다시 검사한다.
+create or replace function public.can_edit_materials() returns boolean
+language sql stable security definer set search_path = '' as $$
+  select (select auth.uid()) is not null and (select private.can_edit_materials());
+$$;
+revoke all on function public.can_edit_materials() from public, anon;
+grant execute on function public.can_edit_materials() to authenticated;
+
+drop policy if exists instructor_materials_insert on public.instructor_materials;
+drop policy if exists instructor_materials_update on public.instructor_materials;
+drop policy if exists instructor_materials_delete on public.instructor_materials;
+create policy instructor_materials_insert on public.instructor_materials for insert to authenticated
+  with check ((select private.can_edit_materials()) and created_by = (select auth.uid()));
+create policy instructor_materials_update on public.instructor_materials for update to authenticated
+  using ((select private.can_edit_materials())) with check ((select private.can_edit_materials()));
+create policy instructor_materials_delete on public.instructor_materials for delete to authenticated
+  using ((select private.can_edit_materials()));
+
+drop policy if exists instructor_materials_files_insert on storage.objects;
+drop policy if exists instructor_materials_files_delete on storage.objects;
+create policy instructor_materials_files_insert on storage.objects for insert to authenticated
+  with check (bucket_id = 'instructor-materials' and (select private.can_edit_materials())
+    and (storage.foldername(name))[1] = (select auth.uid())::text);
+create policy instructor_materials_files_delete on storage.objects for delete to authenticated
+  using (bucket_id = 'instructor-materials' and (select private.can_edit_materials()));
+
+-- [material-categories.sql]
+-- 자료보관함 분류를 강사(또는 자료 담당)가 직접 추가·이름 바꾸기·삭제할 수 있게 한다.
+-- instructor-materials.sql, material-editors.sql 다음에 실행한다. 기본 분류 4개는 그대로 들어간다.
+-- 자료가 남아 있는 분류는 지울 수 없다(on delete restrict). 검증: verify-material-categories.sql(롤백)
+
+create table if not exists public.material_categories (
+  id text primary key check (id ~ '^[a-z0-9-]{1,40}$'),
+  label text not null check (char_length(btrim(label)) between 1 and 20),
+  sort_order integer not null default 100,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists material_categories_label on public.material_categories (lower(btrim(label)));
+insert into public.material_categories(id, label, sort_order) values
+  ('meeting', '면담 예약', 10), ('website', '웹사이트', 20), ('youtube', '유튜브', 30), ('lecture', '강의자료', 40)
+on conflict (id) do nothing;
+
+alter table public.material_categories enable row level security;
+revoke all on public.material_categories from public, anon, authenticated;
+grant select, delete on public.material_categories to authenticated;
+grant insert(id, label, sort_order) on public.material_categories to authenticated;
+grant update(label, sort_order) on public.material_categories to authenticated;
+create policy material_categories_read on public.material_categories for select to authenticated
+  using ((select private.is_member()));
+create policy material_categories_insert on public.material_categories for insert to authenticated
+  with check ((select private.can_edit_materials()));
+create policy material_categories_update on public.material_categories for update to authenticated
+  using ((select private.can_edit_materials())) with check ((select private.can_edit_materials()));
+create policy material_categories_delete on public.material_categories for delete to authenticated
+  using ((select private.can_edit_materials()));
+
+-- 자료의 분류는 고정 목록 대신 분류 테이블을 따른다.
+alter table public.instructor_materials drop constraint if exists instructor_materials_category_check;
+alter table public.instructor_materials drop constraint if exists instructor_materials_category_fkey;
+alter table public.instructor_materials add constraint instructor_materials_category_fkey
+  foreign key (category) references public.material_categories(id) on update cascade on delete restrict;

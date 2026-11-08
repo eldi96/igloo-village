@@ -1,12 +1,11 @@
 // 등대 왼쪽 벽 액자를 누르면 여는 업로드 현황 대시보드(강사·자료 담당 전용).
-// 맥 창 모양 + 연한 파스텔. 최근 프로젝트·활약도·리액션별 프로젝트는 실제 데이터,
+// 맥 창 모양 + 탠 바탕 위 색판 카드(그림자로 입체감). 최근 프로젝트·활약도·리액션별 프로젝트는 실제 데이터,
 // 강의실 좌석·면담 요청은 아직 DB가 없어 예시 화면(배지로 표시)이다.
 const css = `
 .ldb { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 40px 32px;
   background: rgba(84, 62, 54, .34); backdrop-filter: blur(12px) saturate(.8); opacity: 0; transition: opacity .22s cubic-bezier(.23,1,.32,1);
-  --ink:#33393f; --sub:#8a7f78; --faint:#d8d0ca; --line:rgba(120,100,90,.08);
-  --peach:#f6c9b0; --peach2:#fbe3d6; --blush:#f3c4c8; --blush2:#fae3e4; --mint:#b5ddd3; --mint2:#e0f1ec;
-  --butter:#f6e0a8; --butter2:#fbf0d6; --lilac:#d7cdea; --base:#dcb497;
+  --ink:#33393f; --sub:#8a7f78;
+  --base:#dcb497;
   --up: 0 22px 34px -14px rgba(38,48,52,.45), 0 6px 12px -4px rgba(38,48,52,.18);
   --up-s: 0 10px 18px -8px rgba(38,48,52,.42), 0 2px 5px rgba(38,48,52,.12);
   --up-xs: 0 4px 8px -3px rgba(38,48,52,.4), 0 1px 2px rgba(38,48,52,.12);
@@ -69,11 +68,8 @@ const css = `
 .ldb-legend b { color: var(--ink); font-weight: 600; margin-left: 4px; font-variant-numeric: tabular-nums; }
 .ldb-chart { flex: 1; position: relative; margin-top: 10px; min-height: 80px; border-radius: 16px; background: #f7f6f3; box-shadow: var(--in); overflow: hidden; }
 .ldb-chart svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.ldb-chart .ldb-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: ldb-draw .7s cubic-bezier(.23,1,.32,1) forwards; }
 .ldb-chart .ldb-fill { opacity: 0; transform: translateY(10px); animation: ldb-rise .55s cubic-bezier(.23,1,.32,1) forwards; }
 @keyframes ldb-rise { to { opacity: 1; transform: none; } }
-@keyframes ldb-draw { to { stroke-dashoffset: 0; } }
-@keyframes ldb-fade { to { opacity: 1; } }
 .ldb-tip { position: absolute; top: 2px; background: #fff; border-radius: 10px; padding: 7px 10px; font-size: 10.5px; line-height: 1.6; pointer-events: none; white-space: nowrap;
   box-shadow: 0 6px 16px -8px rgba(150,110,95,.55); font-variant-numeric: tabular-nums; }
 .ldb-tip span { color: var(--sub); }
@@ -135,7 +131,7 @@ const css = `
 }
 @media (prefers-reduced-motion: reduce) {
   .ldb, .ldb-win, .ldb-slice { transition: none; }
-  .ldb-chart .ldb-draw, .ldb-chart .ldb-fill { animation: none; stroke-dashoffset: 0; opacity: 1; }
+  .ldb-chart .ldb-fill { animation: none; opacity: 1; transform: none; }
 }`;
 
 const SERIES = [
@@ -153,7 +149,7 @@ const DEMO_REQUESTS = [
   { name: '오세린', kind: 1, text: '포트폴리오 주제를 정하는 중인데 의견 부탁드려요.', when: '11월 6일' },
   { name: '서지훈', kind: 2, text: '11월 7일 오후 3시 면담 완료', when: '11월 5일', done: true }
 ];
-const AV = ['var(--peach2)', 'var(--blush2)', 'var(--mint2)', 'var(--butter2)'];
+const AV = ['#f3c8ad', '#bfe3db', '#ecd9c4', '#d9dcdc'];
 
 const shade = (hex, t) => {   // t>0 밝게(흰색 쪽), t<0 어둡게(갈색 그림자 쪽)
   const n = parseInt(hex.slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255];
