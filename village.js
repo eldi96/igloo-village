@@ -260,7 +260,8 @@ export function addVillage(scene, ctx) {
   for (const p of places) erase(p.x, p.z, p.radius + 0.5);
   erase(hub.x, hub.z, 4.8, 3.8); if (lighthouse) erase(lighthouse.x, lighthouse.z, lighthouse.radius + 0.6);
   ink.clearRect(0, 0, 2048, 8); ink.clearRect(0, 2040, 2048, 8); ink.clearRect(0, 0, 8, 2048); ink.clearRect(2040, 0, 8, 2048);
-  const ground = new THREE.PlaneGeometry(140, 104, 100, 74); ground.rotateX(-Math.PI / 2);
+  // 삼각형 수를 아끼려고 칸을 줄임(완만한 바닥이라 차이가 거의 없음)
+  const ground = new THREE.PlaneGeometry(140, 104, 60, 45); ground.rotateX(-Math.PI / 2);
   const vertices = ground.attributes.position;
   for (let i = 0; i < vertices.count; i++) vertices.setY(i, heightAt(vertices.getX(i), vertices.getZ(i)) + 0.14);
   ground.computeVertexNormals();

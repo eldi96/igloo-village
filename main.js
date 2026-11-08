@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { villageBackend } from './backend/client.js?v=update-announce';
+import { villageBackend } from './backend/client.js?v=ai-owner1';
 import { mountAuth } from './auth-ui.js';
 import { mountChat } from './chat-ui.js';
 import { mountCommentMailbox } from './comment-mailbox.js?v=auto-open';
 import { createQualityControl } from './quality.js';
-import { addStatsBuilding } from './stats-building.js';
-import { mountAnonymousBoard } from './anonymous-board.js?v=navy-theme3';
+import { addStatsBuilding } from './stats-building.js?v=hut4';
+import { mountAnonymousBoard } from './anonymous-board.js?v=ai-owner1';
 import { addAnonymousBoardObject } from './board-object.js?v=aframe-sign2';
 import { smooth, hash, createHeightAt, makeSnowBump, addGround } from './terrain.js?v=split1';
 import { mountTutorial } from './tutorial.js?v=3';
@@ -217,8 +217,9 @@ const ROWS = [
   [9, [-27, -14.5, 14.5, 27]]
 ];
 const LIGHTHOUSE = { x: -33, z: -15, radius: 2.2 };
-const STATS_YAW = Math.atan2(-LIGHTHOUSE.x, 45 - LIGHTHOUSE.z) + Math.PI / 36;
-const STATS_SITE = { x: -36, z: -9, radius: 2.9, scale: .77, yaw: STATS_YAW };
+// 관측소는 등대 앞 왼쪽에 바짝 붙여(중심 거리 약 4.8) 한 쌍처럼 보이게 하고, 문은 마을 쪽으로 살짝 틀어 둔다.
+const STATS_YAW = Math.atan2(-LIGHTHOUSE.x, 45 - LIGHTHOUSE.z) + Math.PI / 9;
+const STATS_SITE = { x: LIGHTHOUSE.x - 2.4, z: LIGHTHOUSE.z + 4.15, radius: 2.3, scale: .6, yaw: STATS_YAW };
 STATS_SITE.doorX = STATS_SITE.x + (.88 * Math.cos(STATS_YAW) + 3.5 * Math.sin(STATS_YAW)) * STATS_SITE.scale;
 STATS_SITE.doorZ = STATS_SITE.z + (-.88 * Math.sin(STATS_YAW) + 3.5 * Math.cos(STATS_YAW)) * STATS_SITE.scale;
 // 행에서 벗어나는 이글루는 [x, z]로 직접 적는다
@@ -395,6 +396,8 @@ function spillMaterial(color, strength) {
 }
 const warmSpillMaterial=spillMaterial(0xffbd7c,.5);
 const lavenderSpillMaterial=spillMaterial(0xd3a0ff,.64);
+const mintSpillMaterial=spillMaterial(0x8ff2d2,.6);
+const yellowSpillMaterial=spillMaterial(0xffe27a,.55);
 function createIglooSpill(group) {
   const geometry=new THREE.PlaneGeometry(13,13,12,12);
   geometry.rotateX(-Math.PI/2);
@@ -425,83 +428,52 @@ const hitGeo = new THREE.SphereGeometry(R * 1.08, 10, 8);
 let idx = 0;
 
 // 천과 깃대 자원은 모든 이글루가 공유한다.
-const flagGeo = new THREE.PlaneGeometry(1.18, 0.72, 24, 12);
-flagGeo.translate(0.59, 0, 0);
-const flagPoleGeo = new THREE.CylinderGeometry(0.028, 0.039, 3.18, 10);
-const flagMetal = new THREE.MeshStandardMaterial({ color: 0x66717a, roughness: 0.48, metalness: 0.7 });
-const flagPoleMat = new THREE.MeshStandardMaterial({ color: 0x514638, roughness: 0.8 });
-const flagRingGeo = new THREE.TorusGeometry(0.049, 0.012, 4, 10);
-const flagCapGeo = new THREE.SphereGeometry(0.054, 10, 6);
-const flagFootGeo = new THREE.CylinderGeometry(0.066, 0.09, 0.28, 10);
-const flagTextures = new Map();
-function flagTexture(color) {
-  if (flagTextures.has(color)) return flagTextures.get(color);
-  const canvas = document.createElement('canvas');
-  canvas.width = 512; canvas.height = 320;
-  const c = canvas.getContext('2d');
-  const tone = new THREE.Color(color).lerp(new THREE.Color(0x414955), 0.26).multiplyScalar(0.86);
-  c.fillStyle = '#' + tone.getHexString(); c.fillRect(0, 0, 512, 320);
-  // 은은한 직조 무늬. 난수를 쓰지 않아 마을 배치에 영향을 주지 않는다.
-  c.fillStyle = 'rgba(255,255,255,.045)';
-  for (let y = 0; y < 320; y += 4) c.fillRect(0, y, 512, 1);
-  c.fillStyle = 'rgba(0,0,0,.045)';
-  for (let x = 0; x < 512; x += 4) c.fillRect(x, 0, 1, 320);
-  c.fillStyle = 'rgba(10,18,27,.16)'; c.fillRect(0, 0, 23, 320);
-  c.strokeStyle = 'rgba(241,233,211,.48)'; c.lineWidth = 1.5;
-  c.setLineDash([5, 5]); c.strokeRect(12, 12, 488, 296); c.setLineDash([]);
-  const map = new THREE.CanvasTexture(canvas);
-  map.colorSpace = THREE.SRGBColorSpace;
-  map.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-  flagTextures.set(color, map);
-  return map;
-}
+// 깃발: 둥근 장대 끝에 두툼하고 모서리가 둥근 긴 깃발(끝은 제비꼬리 모양). 3D 아이콘처럼 말랑하게 보이고 바람에 물결친다.
+const FLAG_L = 0.8, FLAG_H = 0.32, FLAG_NOTCH = 0.15;
+const flagGeo = (() => {
+  // 위·아래 가장자리에 점을 몇 개 두어 물결칠 때 면이 휘게 한다(삼각형 수를 아끼려고 최소한만)
+  const shape = new THREE.Shape(), N = 8;
+  shape.moveTo(0, -FLAG_H / 2);
+  for (let i = 1; i <= N; i++) shape.lineTo(FLAG_L * i / N, -FLAG_H / 2);
+  shape.lineTo(FLAG_L - FLAG_NOTCH, 0);
+  shape.lineTo(FLAG_L, FLAG_H / 2);
+  for (let i = N - 1; i >= 0; i--) shape.lineTo(FLAG_L * i / N, FLAG_H / 2);
+  shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.03, bevelEnabled: true, bevelThickness: 0.028, bevelSize: 0.026, bevelSegments: 1, curveSegments: 1 });
+  geo.translate(0.03, 0, -0.015);
+  return geo;
+})();
+const flagPoleGeo = new THREE.CapsuleGeometry(0.05, 1.4, 1, 6);   // 깃발 끝이 돔 꼭대기 높이쯤 오도록 낮춤
+const flagPoleMat = new THREE.MeshStandardMaterial({ color: 0x8e9fb3, roughness: 0.55 });
 const flagDeform = `
   uniform float flagTime;
   uniform float flagPhase;
   vec3 flagPoint(vec3 p) {
-    float u = clamp(p.x / 1.18, 0.0, 1.0);
-    float v = p.y / 0.72 + 0.5;
+    float u = clamp(p.x / ${FLAG_L.toFixed(2)}, 0.0, 1.0);
     float t = flagTime;
-    float gust = 0.72 + 0.22 * sin(t * 0.63 + flagPhase);
-    float wave = sin(u * 7.0 - t * 2.5 + flagPhase + v * 0.7);
-    float ripple = sin(u * 17.0 - t * 4.1 + v * 3.0 + flagPhase) * 0.022;
-    p.z += pow(u, 1.15) * (wave * 0.14 * gust + ripple + 0.07);
-    p.y -= 0.105 * u + 0.045 * sin(v * 3.141593) * exp(-u * 9.0);
-    p.y += u * u * 0.025 * sin(u * 8.0 - t * 2.5 + flagPhase);
-    p.x -= u * u * (0.025 + 0.025 * wave);
+    p.z += u * sin(u * 5.0 - t * 1.8 + flagPhase) * 0.09;
+    p.y += u * sin(u * 4.0 - t * 1.8 + flagPhase) * 0.025;
     return p;
   }
 `;
 const makeFlag = (ig, color) => {
   const g = new THREE.Group();
-  g.position.set(R + 0.35, 0, 0.7);
+  // 돔 뒤쪽 오른편 밑동 바로 바깥(입구 반대쪽, 앞에서 보면 오른쪽 어깨 너머로 깃발이 보인다)
+  g.position.set(1.6, 0, -1.35);
   const pole = new THREE.Mesh(flagPoleGeo, flagPoleMat);
-  pole.position.y = 1.59; g.add(pole);
-  const foot = new THREE.Mesh(flagFootGeo, flagMetal);
-  foot.position.y = 0.14; g.add(foot);
-  const cap = new THREE.Mesh(flagCapGeo, flagMetal);
-  cap.position.y = 3.2; g.add(cap);
-  for (const y of [2.34, 3.06]) {
-    const ring = new THREE.Mesh(flagRingGeo, flagMetal);
-    ring.rotation.x = Math.PI / 2; ring.position.y = y; g.add(ring);
-  }
+  pole.position.y = 0.75; g.add(pole);
   const time = { value: 0 }, phase = { value: rng() * 6 };
-  const material = new THREE.MeshStandardMaterial({
-    map: flagTexture(color), side: THREE.DoubleSide, roughness: 0.94, metalness: 0
-  });
-  // GPU에서 천의 정점과 법선을 함께 변형해 CPU 계산과 매 프레임 전송을 줄인다.
+  // 밤 조명에서도 색이 탁해지지 않게 자기 색으로 은은하게 밝힌다
+  // 깃발 색은 주인마다 FLAG_COLORS 세 가지 중 하나.
+  // 파란 밤 조명에 갈색으로 탁해지지 않게 아주 약하게만 자기 색으로 밝힌다
+  const material = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.15, roughness: 0.5, metalness: 0 });
   material.onBeforeCompile = shader => {
     shader.uniforms.flagTime = time; shader.uniforms.flagPhase = phase;
-    shader.vertexShader = flagDeform + shader.vertexShader;
-    shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>', `
-      vec3 fx = flagPoint(position + vec3(0.002, 0.0, 0.0)) - flagPoint(position - vec3(0.002, 0.0, 0.0));
-      vec3 fy = flagPoint(position + vec3(0.0, 0.002, 0.0)) - flagPoint(position - vec3(0.0, 0.002, 0.0));
-      vec3 objectNormal = normalize(cross(fx, fy));
-    `).replace('#include <begin_vertex>', 'vec3 transformed = flagPoint(position);');
+    shader.vertexShader = flagDeform + shader.vertexShader.replace('#include <begin_vertex>', 'vec3 transformed = flagPoint(position);');
   };
-  material.customProgramCacheKey = () => 'igloo-cloth-v1';
+  material.customProgramCacheKey = () => 'igloo-puffy-flag-v1';
   const cloth = new THREE.Mesh(flagGeo, material);
-  cloth.position.set(0.045, 2.7, 0); g.add(cloth);
+  cloth.position.set(0.02, 1.3, 0); g.add(cloth);
   ig.group.add(g);
   flags.push({ time });
   return g;
@@ -626,7 +598,8 @@ const BEAM_MS = 30 * 60 * 1000;
 const projectBeams = [];
 let projectBeamGeometry = null, projectBeamMaterial = null;
 let lavenderBeamMaterial = null;
-function beamMaterialFor(home) { return home.lightColor === 'blue' ? lavenderBeamMaterial : projectBeamMaterial; }
+const tintedBeams = {};
+function beamMaterialFor(home) { return tintedBeams[home.lightColor] ?? projectBeamMaterial; }
 function addProjectBeam(homeIndex) {
   const home = igloos[homeIndex];
   if (!home || home.house) return null;
@@ -669,6 +642,12 @@ projectBeamMaterial = new THREE.ShaderMaterial({
     lavenderBeamMaterial.uniforms.t = uTime;
     lavenderBeamMaterial.uniforms.baseColor.value.setRGB(1.45, .78, 1.9);
     lavenderBeamMaterial.uniforms.tipColor.value.setRGB(1.35, 1.2, 1.6);
+    tintedBeams.blue = lavenderBeamMaterial;
+    // 민트·노랑 조명도 같은 방식으로 빛기둥 색을 맞춘다.
+    for (const [name, base, tip] of [['mint', [.55, 1.75, 1.3], [1.1, 1.6, 1.45]], ['yellow', [1.9, 1.55, .45], [1.7, 1.55, 1.0]]]) {
+      const m = projectBeamMaterial.clone(); m.uniforms.t = uTime;
+      m.uniforms.baseColor.value.setRGB(...base); m.uniforms.tipColor.value.setRGB(...tip); tintedBeams[name] = m;
+    }
   }
   const beam = new THREE.Mesh(projectBeamGeometry, beamMaterialFor(home));
   beam.position.set(home.group.position.x, home.group.position.y + R - 0.12 + 8, home.group.position.z);
@@ -748,10 +727,12 @@ igloos.push(statsBuilding);
 const exteriorColors = {
   warm: {inner:new THREE.Color(3.2,1.65,.55),door:new THREE.Color(3.4,1.8,.6),ground:warmSpillMaterial},
   // 저장된 선택값 blue는 유지하고, 그 보상 색상을 라벤더로 교체한다.
-  blue: {inner:new THREE.Color(1.65,.38,2.8),door:new THREE.Color(1.9,.5,3.2),ground:lavenderSpillMaterial}
+  blue: {inner:new THREE.Color(1.65,.38,2.8),door:new THREE.Color(1.9,.5,3.2),ground:lavenderSpillMaterial},
+  mint: {inner:new THREE.Color(.55,2.6,1.75),door:new THREE.Color(.65,2.9,1.95),ground:mintSpillMaterial},
+  yellow: {inner:new THREE.Color(3.0,2.45,.5),door:new THREE.Color(3.2,2.65,.6),ground:yellowSpillMaterial}
 };
 function lightUp(ig, choice = 'warm') {
-  const color = choice === 'blue' ? 'blue' : 'warm';
+  const color = exteriorColors[choice] ? choice : 'warm';
   if (ig.lightColor === color && ig.glow.visible) return;
   ig.lightColor = color;
   const tint = exteriorColors[color];
@@ -920,7 +901,7 @@ let santa = null;
 // 주인이 있는 이글루 번호. 마을 모듈이 늦게 불러와져도 우편함을 맞게 세운다.
 let ownedHomeIds = [];
 let polarBear = null;
-import('./village.js?v=mail-rise3')
+import('./village.js?v=lowtri2')
   .then(m => {
     village = m.addVillage(scene, { places, hub: HUB, heightAt, rng, lighthouse: LIGHTHOUSE, statsSite: STATS_SITE });
     commentMailbox.setWorld(village);
@@ -929,12 +910,12 @@ import('./village.js?v=mail-rise3')
     // 게시판은 모닥불 바로 왼쪽(화면 기준)에 둔다. 모닥불 자리가 없으면 예전 벤치 자리.
     const signSpot = village.fireSpot ? { x: village.fireSpot.x - 2.1, z: village.fireSpot.z + 0.2 } : village.boardSpot;
     if (signSpot) boardObject.place(signSpot.x, signSpot.z, Math.PI / 14);
-    import('./polar-bear.js?v=meshopt-webp')
+    import('./polar-bear.js?v=lowtri1')
       .then(({ addPolarBear }) => addPolarBear(scene, { obstacles: village.walkingObstacles, heightAt }))
       .then(bear => { polarBear = bear; })
       .catch(error => console.warn('북극곰을 불러오지 못했어요:', error));
     renderer.shadowMap.needsUpdate = true;
-    import('./santa.js?v=meshopt-webp')
+    import('./santa.js?v=lowtri1')
       .then(({ addSanta }) => addSanta(scene, { fireSpot: village.fireSpot, heightAt, height: R * 0.8 }))
       .then(character => { santa = character; renderer.shadowMap.needsUpdate = true; })
       .catch(error => console.warn('산타 모델을 불러오지 못했어요:', error));
@@ -1260,10 +1241,13 @@ async function claim(ig) {
   }
 }
 // 사람마다 깃발 색이 달라지되, 누가 봐도 같은 색이 되도록 계정 ID에서 뽑는다
+// 깃발 색은 세 가지 중 하나. 누가 봐도 같은 색이 되도록 계정 ID에서 고른다
+// 등불 금빛(가로등·문틈 불빛), 코랄(따뜻한 짝), 오로라 민트(하늘 오로라와 같은 계열). 파란 밤 마을에서 모두 또렷하다
+const FLAG_COLORS = [0xf0b45a, 0xee8f7a, 0x86cdb8];
 const flagColorOf = id => {
   let h = 0;
   for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return new THREE.Color().setHSL((h % 360) / 360, 0.62, 0.52).getHex();
+  return FLAG_COLORS[h % FLAG_COLORS.length];
 };
 let syncing = null, syncAgain = false;
 // DB의 입주 상태를 마을에 반영한다. raiseHome은 깃발을 올리는 연출을 보여줄 집이다.
@@ -1379,7 +1363,7 @@ async function openVisitDashboard() {
     if (!await villageBackend.canViewObservatory()) return setBar('개발팀 전용 공간입니다.', [['마을로 돌아가기', leave]]);
     if (mode !== 'in' || auth.user?.id !== userId) return;
     if (!visitDashboard) {
-      const { createVisitDashboard } = await import('./visit-dashboard.js?v=team-access');
+      const { createVisitDashboard } = await import('./visit-dashboard.js?v=clear2');
       visitDashboard = createVisitDashboard(villageBackend, { getMember: () => auth.member, onExit: closeVisitDashboard });
     }
     if (mode !== 'in') return;
@@ -1449,7 +1433,7 @@ async function goInside(ig, projectId = null) {
     });
     room = lighthouseRoom;
   } else {
-    if (!iglooRoom) iglooRoom = (await import('./room.js?v=react-row-up')).createRoom({ canvas, renderer, backend: villageBackend, onRoomPublicChange: value => { if (currentRoomIg) currentRoomIg.isPublic = value; }, onNotificationsRead: () => commentMailbox.refresh(), onExteriorLightChange: () => syncVillage().catch(() => {}) });
+    if (!iglooRoom) iglooRoom = (await import('./room.js?v=mintyellow1')).createRoom({ canvas, renderer, backend: villageBackend, onRoomPublicChange: value => { if (currentRoomIg) currentRoomIg.isPublic = value; }, onNotificationsRead: () => commentMailbox.refresh(), onExteriorLightChange: () => syncVillage().catch(() => {}) });
     room = iglooRoom;
   }
   room.setAspect?.(W() / H());

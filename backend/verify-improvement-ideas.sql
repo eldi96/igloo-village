@@ -25,7 +25,7 @@ do $$ begin
   if exists (select 1 from public.list_improvement_ideas() where id = current_setting('igloo.idea1')::uuid) then raise exception 'FAIL: review idea visible to student'; end if;
   begin perform public.set_improvement_idea_status(current_setting('igloo.idea1')::uuid, 'voting'); raise exception 'FAIL: student changed status';
   exception when insufficient_privilege then null; end;
-  begin perform public.react_improvement_idea(current_setting('igloo.idea1')::uuid, 1); raise exception 'FAIL: reacted to review idea';
+  begin perform public.react_improvement_idea(current_setting('igloo.idea1')::uuid, 1::smallint); raise exception 'FAIL: reacted to review idea';
   exception when invalid_parameter_value then null; end;
 end $$;
 reset role;

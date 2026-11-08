@@ -153,7 +153,7 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
       return unwrap(await api.rpc('get_exterior_light'));
     },
     async setExteriorLight(color) {
-      if (!['warm','blue'].includes(color)) throw new Error('불빛 색상을 확인해 주세요.');
+      if (!['warm','blue','mint','yellow'].includes(color)) throw new Error('불빛 색상을 확인해 주세요.');
       const { api } = await requireMember('student');
       return unwrap(await api.rpc('set_exterior_light', { p_color: color }));
     },
@@ -338,13 +338,29 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
       const { api } = await requireMember();
       return unwrap(await api.rpc('set_improvement_idea_status', { p_id: id, p_status: status })) === true;
     },
+    // AI 정리 버튼 표시용(지정된 한 계정만). 실제 권한은 DB 함수가 다시 검사한다.
+    async canRunAiSummary() {
+      const { api } = await requireMember();
+      return unwrap(await api.rpc('can_run_ai_summary')) === true;
+    },
+    // 지정된 계정: Vercel 함수가 익명 채팅을 AI로 읽고 많이 나온 의견 3개를 `검토 대기`에 넣는다. 키는 서버에만 있다.
+    async summarizeImprovementIdeas() {
+      const { api } = await requireMember();
+      const { data } = await api.auth.getSession();
+      const token = data?.session?.access_token;
+      if (!token) throw new Error('먼저 로그인해주세요.');
+      const res = await fetch('/api/summarize-ideas', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || (res.status === 404 ? 'AI 정리는 배포된 사이트에서만 쓸 수 있어요.' : 'AI 정리에 실패했어요.'));
+      return body;
+    },
     async getProjectFeedback(projectId) {
       if (!UUID.test(projectId)) throw new Error('존재하지 않는 프로젝트입니다.');
       const { api } = await requireMember();
       const columns = 'id,member_id,body,created_at,parent_id,deleted_at,members!project_comments_member_id_fkey(display_name)';
       const [comments, reactions] = await Promise.all([
         api.from('project_comments').select(columns).eq('project_id', projectId).is('parent_id', null).order('created_at', { ascending: false }).order('id').limit(100),
-        api.from('project_reactions').select('member_id,emoji').eq('project_id', projectId).limit(1000)
+        api.from('project_reactions').select('*').eq('project_id', projectId).order('created_at').limit(1000)
       ]);
       const roots = unwrap(comments), all = [...roots];
       // 원댓글을 먼저 고른 뒤 답글을 읽어, 답글만 남거나 중간에 잘리는 것을 막는다.
@@ -375,16 +391,18 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
       events.dispatchEvent(new Event('comments'));
       return row;
     },
-    async setProjectReaction(projectId, emoji, active) {
+    async addProjectReaction(projectId, emoji, dropX = null) {
       if (!UUID.test(projectId) || !['👍', '❤️'].includes(emoji)) throw new Error('올바른 프로젝트와 반응을 선택해 주세요.');
       const { api, member } = await requireMember();
-      if (active) {
-        const { error } = await api.from('project_reactions').insert({ project_id: projectId, member_id: member.id, emoji });
-        if (error && error.code !== '23505') throw error;
-      } else {
-        const { error } = await api.from('project_reactions').delete().eq('project_id', projectId).eq('member_id', member.id).eq('emoji', emoji);
-        if (error) throw error;
+      // 하루 한 번: 같은 날 두 번째 누름은 DB 기본 키에 막히고(23505) 조용히 넘어간다
+      const row = { project_id: projectId, member_id: member.id, emoji };
+      if (Number.isFinite(dropX)) row.drop_x = Math.min(1, Math.max(0, dropX));   // 이미지 창에 떨어진 가로 위치(0~1)
+      let { error } = await api.from('project_reactions').insert(row);
+      if (error && 'drop_x' in row && ['PGRST204', '42703', '42501'].includes(error.code)) {   // 위치 칸이 아직 DB에 없으면 위치 없이 저장
+        delete row.drop_x;
+        ({ error } = await api.from('project_reactions').insert(row));
       }
+      if (error && error.code !== '23505') throw error;
     },
     onCommentChange(callback) {
       events.addEventListener('comments', callback);

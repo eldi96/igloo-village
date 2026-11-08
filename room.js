@@ -3,8 +3,9 @@
 import * as THREE from 'three';
 import { mountPrivacyPanel } from './privacy-panel.js';
 import { mountCardThemes } from './card-themes.js?v=compact-unlock-notice';
-import { mountExteriorLight } from './exterior-light.js?v=lavender';
-import { mountProjectFeedback } from './project-feedback.js?v=react-row-up';
+import { mountExteriorLight } from './exterior-light.js?v=mintyellow1';
+import { mountProjectFeedback } from './project-feedback.js?v=react-drop1';
+import { createReactionPile } from './reaction-pile.js?v=react-drop1';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
@@ -33,6 +34,7 @@ const STYLE = `
   .room-label { position: fixed; z-index: 3; transform: translate(-50%, -100%); padding: 5px 14px; border: 1px solid rgba(255,255,255,.38); border-radius: 999px; background: rgba(255,255,255,.14); -webkit-backdrop-filter: blur(14px) saturate(140%); backdrop-filter: blur(14px) saturate(140%); box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 6px 18px rgba(11,19,43,.22); color: #fff; text-shadow: 0 1px 2px rgba(11,19,43,.35); font: 600 12px/1.5 "Segoe UI", "Malgun Gothic", system-ui, sans-serif; white-space: nowrap; pointer-events: none; }
   .room-label[data-empty="true"] { background: rgba(255,255,255,.07); color: rgba(255,255,255,.82); border-style: dashed; }
   .room-label[data-active="true"] { border-color: rgba(255,255,255,.7); background: rgba(255,255,255,.3); }
+  .room-label[data-comments]::after { content: '새 댓글 ' attr(data-comments); margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: linear-gradient(180deg, #ffd79a, #ffb35c); color: #5a3210; text-shadow: none; font-size: 11px; font-variant-numeric: tabular-nums; box-shadow: 0 0 10px rgba(255,190,110,.55); }
   .room-veil { position: fixed; z-index: 6; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(18,12,10,.22); }
   .room-form { box-sizing: border-box; width: min(940px, 100%); max-height: calc(100dvh - 40px); overflow-y: auto; padding: 24px; border: 1px solid rgba(255,245,230,.38); border-radius: 26px; background: linear-gradient(135deg, rgba(255,239,219,.2), rgba(38,24,19,.62)); backdrop-filter: blur(18px) saturate(125%); -webkit-backdrop-filter: blur(18px) saturate(125%); box-shadow: 0 24px 72px rgba(16,9,6,.32), inset 0 1px rgba(255,255,255,.45), inset 0 -1px rgba(255,255,255,.06); scrollbar-width: thin; scrollbar-color: rgba(255,239,219,.3) transparent; transition: opacity 160ms cubic-bezier(.23,1,.32,1), transform 160ms cubic-bezier(.23,1,.32,1); }
   @starting-style { .room-form { opacity: 0; transform: translateY(6px) scale(.98); } }
@@ -78,6 +80,7 @@ const STYLE = `
   .room-browser-dots i:nth-child(3) { background: #61c554; }
   .room-browser-address { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 10px; border: 1px solid rgba(255,255,255,.16); border-radius: 6px; background: rgba(25,19,16,.28); color: #fff3e4; font-size: 10px; line-height: 1.5; text-align: center; }
   .room-browser-content { position: relative; flex: 1; min-height: 0; overflow: hidden; display: grid; place-items: center; }
+  .reaction-pile { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; pointer-events: none; }
   .room-image-frame { position: absolute; inset: 0; }
   .room-browser-content img { position: absolute; inset: 0; }
   .room-shot[data-portrait="true"] { aspect-ratio: auto; }
@@ -423,15 +426,31 @@ function addCrystal(scene, offset = 0, seedStart = 11) {
   // 수정 재질: 면마다 밝기가 다르고, 가장자리로 갈수록 밝게 빛나는 반투명 얼음
   const crystalMaterial = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.NormalBlending,
-    uniforms: { glow: { value: 1 }, focus: { value: 0 } },
+    uniforms: { glow: { value: 1 }, focus: { value: 0 }, alert: { value: 0 }, baseY: { value: BENCH.h } },
     vertexShader: 'varying vec3 vPos;void main(){vec4 w=modelMatrix*vec4(position,1.);vPos=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}',
-    fragmentShader: `varying vec3 vPos;uniform float glow;uniform float focus;
+    // 면 음영 + 가장자리 빛 + 위에서 오는 반짝 하이라이트 + 보는 각도에 따라 살짝 무지갯빛, 뒷면은 어둡게 비쳐 깊이를 준다.
+    // alert(새 댓글)가 켜지면 아래쪽부터 따뜻한 금빛으로 물든다.
+    fragmentShader: `varying vec3 vPos;uniform float glow;uniform float focus;uniform float alert;uniform float baseY;
       void main(){vec3 nc=cross(dFdx(vPos),dFdy(vPos));vec3 n=dot(nc,nc)>1e-12?normalize(nc):vec3(0.,1.,0.);vec3 v=normalize(cameraPosition-vPos);
-      float facing=abs(dot(n,v));float rim=pow(1.-facing,2.2);
-      float facet=.55+.45*abs(dot(n,normalize(vec3(.3,.8,.5))));
-      vec3 c=mix(vec3(.55,.8,1.),vec3(.92,.98,1.),rim)*facet;
-      gl_FragColor=clamp(vec4(c*(1.+rim*.6*glow+focus*.5),.18+rim*.55+focus*.12),0.,4.);}`
+      if(dot(n,v)<0.)n=-n;
+      float facing=dot(n,v);float rim=pow(1.-facing,2.4);
+      vec3 L=normalize(vec3(.25,1.,.35));float facet=.5+.5*max(dot(n,L),0.);
+      float spec=pow(max(dot(reflect(-L,n),v),0.),28.);
+      float h=clamp((vPos.y-baseY)/1.5,0.,1.);
+      vec3 ice=mix(vec3(.36,.62,1.),vec3(.86,.96,1.),h);
+      vec3 film=.5+.5*cos(6.2832*(rim*.9+vec3(0.,.33,.67)));
+      vec3 warm=mix(vec3(1.,.62,.32),vec3(1.,.86,.6),h);
+      vec3 base=mix(ice,warm,alert*(1.-h*.45));
+      vec3 c=base*facet+film*rim*.22+vec3(spec)*1.4;
+      float back=gl_FrontFacing?1.:.55;
+      c*=back*(1.+rim*.7*glow+focus*.5+alert*.25);
+      gl_FragColor=clamp(vec4(c,(.16+rim*.5+spec*.4+focus*.12)*back),0.,4.);}`
   });
+  // 모서리 선: 각진 결정 느낌을 또렷하게
+  const edgeMaterial = new THREE.LineBasicMaterial({ color: 0xe6f6ff, transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+  // 안쪽 심: 가운데 기둥 속에서 은은하게 숨 쉬는 빛
+  const coreMaterial = new THREE.MeshBasicMaterial({ color: 0x9fd8ff, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+  const ICE_SPARK = new THREE.Color(0xd8f0ff), WARM_SPARK = new THREE.Color(0xffd28a), ICE_EDGE = new THREE.Color(0xe6f6ff), WARM_EDGE = new THREE.Color(0xffe2b0);
   // 볼록 껍질로 각진 수정 조각을 만든다(아래 뾰족, 가운데 육각 기둥, 위 뾰족).
   const crystal = (height, radius, lean) => {
     const pts = [new THREE.Vector3(0, 0, 0)];
@@ -442,14 +461,20 @@ function addCrystal(scene, offset = 0, seedStart = 11) {
       }
     }
     pts.push(new THREE.Vector3(lean * 0.1, height, 0));
-    const mesh = new THREE.Mesh(new ConvexGeometry(pts), crystalMaterial);
+    const geometry = new ConvexGeometry(pts);
+    const mesh = new THREE.Mesh(geometry, crystalMaterial);
+    mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 18), edgeMaterial));
     mesh.rotation.z = lean;
     return mesh;
   };
   const cluster = new THREE.Group();
   cluster.position.y = 0.08;
   group.add(cluster);
-  cluster.add(crystal(1.9, 0.48, 0));
+  const main = crystal(1.9, 0.48, 0);
+  cluster.add(main);
+  const core = new THREE.Mesh(main.geometry, coreMaterial);
+  core.scale.set(0.38, 0.62, 0.38); core.position.y = 0.32;
+  cluster.add(core);
   for (const [x, z, h, r, lean] of [[-0.42, 0.05, 1.05, 0.26, 0.45], [0.45, -0.05, 1.2, 0.28, -0.42], [-0.15, -0.3, 0.75, 0.2, 0.25], [0.2, 0.32, 0.7, 0.18, -0.3]]) {
     const c = crystal(h, r, lean);
     c.position.set(x, 0, z);
@@ -489,6 +514,19 @@ function addCrystal(scene, offset = 0, seedStart = 11) {
   const ring = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.7, 64), new THREE.MeshBasicMaterial({ color: 0x9fdcff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
   ring.rotation.x = -Math.PI / 2; ring.position.y = 0.012;
   group.add(ring);
+  // 바깥쪽에 끊어진 고리 하나를 더 두고 천천히 돌린다
+  const dashes = new THREE.Group();
+  const dashMaterial = new THREE.MeshBasicMaterial({ color: 0xbfe6ff, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
+  for (let i = 0; i < 12; i++) dashes.add(new THREE.Mesh(new THREE.RingGeometry(0.8, 0.83, 6, 1, i / 12 * Math.PI * 2, Math.PI * 2 / 12 * 0.55), dashMaterial));
+  dashes.rotation.x = -Math.PI / 2; dashes.position.y = 0.014;
+  group.add(dashes);
+  // 새 댓글 물결: 받침에서 바깥으로 퍼지며 사라지는 금빛 고리 2개
+  const ripples = [0, 0.5].map(phase => {
+    const mesh = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 64), new THREE.MeshBasicMaterial({ color: 0xffc77a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+    mesh.rotation.x = -Math.PI / 2; mesh.position.y = 0.016;
+    group.add(mesh);
+    return { mesh, phase };
+  });
   const pool = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4), new THREE.MeshBasicMaterial({ map: glowMap, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
   pool.rotation.x = -Math.PI / 2; pool.position.y = 0.01;
   group.add(pool);
@@ -500,38 +538,52 @@ function addCrystal(scene, offset = 0, seedStart = 11) {
   for (let i = 0; i < SPARKS; i++) base.push([(rand() - 0.5) * 1.4, (rand() - 0.5) * 1.4, rand(), 0.12 + rand() * 0.15]);
   const sparkGeometry = new THREE.BufferGeometry();
   sparkGeometry.setAttribute('position', new THREE.BufferAttribute(sparkPos, 3));
-  group.add(new THREE.Points(sparkGeometry, new THREE.PointsMaterial({ color: 0xd8f0ff, size: 0.045, transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false })));
+  const sparkMaterial = new THREE.PointsMaterial({ color: 0xd8f0ff, map: glowMap, size: 0.09, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+  group.add(new THREE.Points(sparkGeometry, sparkMaterial));
   // 누르기 판정용 보이지 않는 상자
   const hit = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.4, 1.6), CRYSTAL_HIT);
   hit.position.y = 1.1;
   group.add(hit);
   group.updateMatrixWorld(true);
   const anchor = group.localToWorld(new THREE.Vector3(0, 2.25, 0));
-  let focus = 0;
+  let focus = 0, alertTarget = 0, alert = 0, prevT = null;
   const update = (t, still) => {
     const s = still ? 0 : t;
+    const dt = prevT === null ? 0 : Math.min(0.1, t - prevT); prevT = t;
+    alert = still ? alertTarget : alert + (alertTarget - alert) * (1 - Math.exp(-dt * 4));   // 새 댓글 빛은 부드럽게 켜지고 꺼진다
     crystalMaterial.uniforms.focus.value = focus;
+    crystalMaterial.uniforms.alert.value = alert;
     cluster.rotation.y = s * 0.15;
     cluster.position.y = 0.08 + Math.sin(s * 1.2) * 0.04;
     panel.position.y = 1.0 + Math.sin(s * 1.2 + 0.6) * 0.05;
-    const pulse = 0.85 + Math.sin(s * 2.1) * 0.15;
+    dashes.rotation.z = -s * 0.25;
+    const pulse = 0.85 + Math.sin(s * (2.1 + alert * 1.4)) * 0.15;
     crystalMaterial.uniforms.glow.value = pulse;
+    coreMaterial.opacity = (0.28 + pulse * 0.12) * (1 + alert * 0.8);
+    coreMaterial.color.setRGB(0.62 + alert * 0.38, 0.85 - alert * 0.07, 1 - alert * 0.45);
+    edgeMaterial.color.lerpColors(ICE_EDGE, WARM_EDGE, alert);
+    sparkMaterial.color.lerpColors(ICE_SPARK, WARM_SPARK, alert);
     ring.material.opacity = 0.55 + pulse * 0.35;
-    halo.material.opacity = 0.4 * pulse;
+    halo.material.opacity = 0.4 * pulse * (1 + alert * 0.5);
+    for (const { mesh, phase } of ripples) {
+      const k = still ? 0.35 : (s * 0.6 + phase) % 1;
+      mesh.scale.setScalar(0.75 + k * 0.9);
+      mesh.material.opacity = alert * (1 - k) * 0.7;
+    }
     for (let i = 0; i < SPARKS; i++) {
       const [x, z, offset, speed] = base[i];
-      const life = still ? offset : (offset + t * speed) % 1;
+      const life = still ? offset : (offset + t * speed * (1 + alert * 0.6)) % 1;
       sparkPos[i * 3] = x * (1 - life * 0.5); sparkPos[i * 3 + 1] = 0.2 + life * 2.2; sparkPos[i * 3 + 2] = z * (1 - life * 0.5);
     }
     sparkGeometry.attributes.position.needsUpdate = true;
   };
-  return { group, hit, anchor, update, setFocus: v => { focus = v; } };
+  return { group, hit, anchor, update, setFocus: v => { focus = v; }, setAlert: on => { alertTarget = on ? 1 : 0; } };
 }
 
-// 천장 가운데 매달린 조명. 색은 '조명 변경'(프로젝트 2개로 해금) 설정을 따른다: 기본 은은한 주황, 라벤더 보라.
+// 천장 가운데 매달린 조명. 색은 '조명 변경'(프로젝트 2개로 해금) 설정을 따른다: 기본 은은한 주황, 라벤더 보라, 민트, 노랑.
 // 구운 벽·바닥 밝기. 1이면 구운 그대로, 낮출수록 방이 은은하게 어두워져 천장 조명과 수정이 돋보인다(다시 굽지 않아도 됨).
 const ROOM_SHADE = new THREE.Color(0.52, 0.53, 0.6);
-const LAMP_COLORS = { warm: 0xff9440, blue: 0xb184ff };
+const LAMP_COLORS = { warm: 0xff9440, blue: 0xb184ff, mint: 0x52eec0, yellow: 0xffd23f };
 const LAMP_Y = 7.4;
 // 조명 색 번짐 막의 반지름. 카메라는 이 막보다 늘 안쪽에 있어야 색 경계가 보이지 않는다(moveCamera에서 막음).
 const WASH_R = DOME_R - 0.05;
@@ -1065,7 +1117,10 @@ export function createRoom({ canvas, renderer, backend, onRoomPublicChange = () 
     if (!isMine || !active) return;
     await backend.markCommentNotificationsRead(id, before);
     onNotificationsRead();
-  } });
+    refreshUnread();
+  }, onReact: (emoji, svg) => reactionPile.drop(svg), onLoaded: svgs => reactionPile.fill(svgs), isOwner: () => isMine });
+  const reactionPile = createReactionPile(card.querySelector('.room-browser-content'));
+  let pileProjectId = null;
   card.querySelector('.room-author').append(card.querySelector('.feedback-reactions'));
   const q = selector => card.querySelector(selector);
   const form = formVeil.querySelector('form');
@@ -1175,6 +1230,7 @@ export function createRoom({ canvas, renderer, backend, onRoomPublicChange = () 
   resetView();
   placeCamera();
 
+  let unreadComments = new Map(), unreadTimer = 0;
   let active = false, home = null, isMine = false, ownerName = '', selected = null, formSlot = null, loadToken = 0, removing = false, lastTime = null;
   const ray = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
@@ -1201,7 +1257,21 @@ export function createRoom({ canvas, renderer, backend, onRoomPublicChange = () 
       slot.label.textContent = slot.project ? slot.project.title : '프로젝트 넣기';
       slot.label.dataset.empty = String(!slot.project);
       slot.label.dataset.active = String(selected === slot);
+      // 내 이글루: 안 읽은 댓글이 있는 수정은 금빛으로 물들고 이름표에 개수가 붙는다
+      const unread = isMine && slot.project ? unreadComments.get(slot.project.id) || 0 : 0;
+      if (unread) slot.label.dataset.comments = unread > 99 ? '99+' : String(unread); else delete slot.label.dataset.comments;
+      slot.crystal?.setAlert(unread > 0);
     }
+  }
+  async function refreshUnread() {
+    if (!isMine || !active) { if (unreadComments.size) { unreadComments = new Map(); setLabels(); } return; }
+    try {
+      const rows = await backend.getCommentNotifications();
+      const next = new Map();
+      for (const row of rows) next.set(row.project_id, (next.get(row.project_id) || 0) + 1);
+      unreadComments = next;
+      setLabels();
+    } catch (e) { console.warn('새 댓글을 확인하지 못했어요:', e.message); }
   }
   function applyProjects(rows) {
     // 오래된 프로젝트부터 첫 번째 상자에 놓는다.
@@ -1216,6 +1286,7 @@ export function createRoom({ canvas, renderer, backend, onRoomPublicChange = () 
   function renderCard() {
     if (!selected?.project) return closeCard();
     const list = filled(), { project } = selected;
+    if (pileProjectId !== project.id) { pileProjectId = project.id; reactionPile.clear(); }   // 다른 프로젝트로 넘기면 쌓인 반응을 비운다
 
     q('[data-prev]').hidden = q('[data-next]').hidden = list.length < 2;
     q('[data-avatar]').textContent = (ownerName || '?').trim().charAt(0) || '?';
@@ -1321,6 +1392,9 @@ export function createRoom({ canvas, renderer, backend, onRoomPublicChange = () 
       const rows = await backend.getProjects(home);
       if (token === loadToken) {
         applyProjects(rows);
+        refreshUnread();
+        clearInterval(unreadTimer);
+        if (isMine) unreadTimer = setInterval(refreshUnread, 15000);   // 방에 있는 동안 새 댓글을 15초마다 확인
         const target = projectId && slots.find(slot => slot.project?.id === projectId);
         if (target) openCard(target);
       }
@@ -1531,7 +1605,7 @@ export function createRoom({ canvas, renderer, backend, onRoomPublicChange = () 
       privacy.leave();
       cardThemes.leave();
       exteriorLight.leave();
-      active = false;
+      active = false; clearInterval(unreadTimer); unreadComments = new Map();
       loadToken++;
       clearInput();
       closeForm();
