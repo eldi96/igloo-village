@@ -901,9 +901,10 @@ let santa = null;
 // 주인이 있는 이글루 번호. 마을 모듈이 늦게 불러와져도 우편함을 맞게 세운다.
 let ownedHomeIds = [];
 let polarBear = null;
-import('./village.js?v=lowtri2')
+import('./village.js?v=fire-pin1')
   .then(m => {
-    village = m.addVillage(scene, { places, hub: HUB, heightAt, rng, lighthouse: LIGHTHOUSE, statsSite: STATS_SITE });
+    // 모닥불은 관측소를 옮기기 전 자리(도로 오른쪽)에 고정한다. 난수 배치에 맡기면 다른 건물을 옮길 때마다 산타·게시판까지 함께 움직인다.
+    village = m.addVillage(scene, { places, hub: HUB, heightAt, rng, lighthouse: LIGHTHOUSE, statsSite: STATS_SITE, fireSpot: { x: 5.4, z: 12.01 } });
     commentMailbox.setWorld(village);
     village.setOwnedMailboxes(ownedHomeIds);
     // 게시판은 모닥불 왼쪽 앞(옛 벤치 자리)에 세우고, 정면에서 오른쪽(모닥불 쪽)으로 약 10° 돌린다.
