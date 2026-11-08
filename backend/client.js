@@ -153,7 +153,7 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
       return unwrap(await api.rpc('get_exterior_light'));
     },
     async setExteriorLight(color) {
-      if (!['warm','blue'].includes(color)) throw new Error('불빛 색상을 확인해 주세요.');
+      if (!['warm','blue','mint','yellow'].includes(color)) throw new Error('불빛 색상을 확인해 주세요.');
       const { api } = await requireMember('student');
       return unwrap(await api.rpc('set_exterior_light', { p_color: color }));
     },

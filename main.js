@@ -395,6 +395,8 @@ function spillMaterial(color, strength) {
 }
 const warmSpillMaterial=spillMaterial(0xffbd7c,.5);
 const lavenderSpillMaterial=spillMaterial(0xd3a0ff,.64);
+const mintSpillMaterial=spillMaterial(0x8ff2d2,.6);
+const yellowSpillMaterial=spillMaterial(0xffe27a,.55);
 function createIglooSpill(group) {
   const geometry=new THREE.PlaneGeometry(13,13,12,12);
   geometry.rotateX(-Math.PI/2);
@@ -595,7 +597,8 @@ const BEAM_MS = 30 * 60 * 1000;
 const projectBeams = [];
 let projectBeamGeometry = null, projectBeamMaterial = null;
 let lavenderBeamMaterial = null;
-function beamMaterialFor(home) { return home.lightColor === 'blue' ? lavenderBeamMaterial : projectBeamMaterial; }
+const tintedBeams = {};
+function beamMaterialFor(home) { return tintedBeams[home.lightColor] ?? projectBeamMaterial; }
 function addProjectBeam(homeIndex) {
   const home = igloos[homeIndex];
   if (!home || home.house) return null;
@@ -638,6 +641,12 @@ projectBeamMaterial = new THREE.ShaderMaterial({
     lavenderBeamMaterial.uniforms.t = uTime;
     lavenderBeamMaterial.uniforms.baseColor.value.setRGB(1.45, .78, 1.9);
     lavenderBeamMaterial.uniforms.tipColor.value.setRGB(1.35, 1.2, 1.6);
+    tintedBeams.blue = lavenderBeamMaterial;
+    // 민트·노랑 조명도 같은 방식으로 빛기둥 색을 맞춘다.
+    for (const [name, base, tip] of [['mint', [.55, 1.75, 1.3], [1.1, 1.6, 1.45]], ['yellow', [1.9, 1.55, .45], [1.7, 1.55, 1.0]]]) {
+      const m = projectBeamMaterial.clone(); m.uniforms.t = uTime;
+      m.uniforms.baseColor.value.setRGB(...base); m.uniforms.tipColor.value.setRGB(...tip); tintedBeams[name] = m;
+    }
   }
   const beam = new THREE.Mesh(projectBeamGeometry, beamMaterialFor(home));
   beam.position.set(home.group.position.x, home.group.position.y + R - 0.12 + 8, home.group.position.z);
@@ -717,10 +726,12 @@ igloos.push(statsBuilding);
 const exteriorColors = {
   warm: {inner:new THREE.Color(3.2,1.65,.55),door:new THREE.Color(3.4,1.8,.6),ground:warmSpillMaterial},
   // 저장된 선택값 blue는 유지하고, 그 보상 색상을 라벤더로 교체한다.
-  blue: {inner:new THREE.Color(1.65,.38,2.8),door:new THREE.Color(1.9,.5,3.2),ground:lavenderSpillMaterial}
+  blue: {inner:new THREE.Color(1.65,.38,2.8),door:new THREE.Color(1.9,.5,3.2),ground:lavenderSpillMaterial},
+  mint: {inner:new THREE.Color(.55,2.6,1.75),door:new THREE.Color(.65,2.9,1.95),ground:mintSpillMaterial},
+  yellow: {inner:new THREE.Color(3.0,2.45,.5),door:new THREE.Color(3.2,2.65,.6),ground:yellowSpillMaterial}
 };
 function lightUp(ig, choice = 'warm') {
-  const color = choice === 'blue' ? 'blue' : 'warm';
+  const color = exteriorColors[choice] ? choice : 'warm';
   if (ig.lightColor === color && ig.glow.visible) return;
   ig.lightColor = color;
   const tint = exteriorColors[color];

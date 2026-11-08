@@ -991,7 +991,7 @@ grant execute on function public.get_igloo_card_theme(integer),public.set_card_t
 -- 프로젝트 2개 보상. 내부 장면과 별개인 외부 발광 색만 저장.
 alter table public.members add column exterior_light_unlocked_at timestamptz;
 alter table public.igloos add column exterior_light text not null default 'warm'
-  check(exterior_light in ('warm','blue'));
+  check(exterior_light in ('warm','blue','mint','yellow'));
 create or replace function private.unlock_card_theme() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
@@ -1033,9 +1033,9 @@ language plpgsql volatile security definer set search_path = '' as $$
 declare unlocked boolean; saved text;
 begin
   if not private.is_student() then raise insufficient_privilege using message='승인된 수강생만 변경할 수 있어요.';end if;
-  if p_color is null or p_color not in ('warm','blue') then raise invalid_parameter_value using message='불빛 색상을 확인해 주세요.';end if;
+  if p_color is null or p_color not in ('warm','blue','mint','yellow') then raise invalid_parameter_value using message='불빛 색상을 확인해 주세요.';end if;
   select exterior_light_unlocked_at is not null into unlocked from public.members where id=(select auth.uid());
-  if p_color='blue' and not unlocked then raise insufficient_privilege using message='프로젝트 2개를 등록하면 파란 불빛이 열려요.';end if;
+  if p_color<>'warm' and not unlocked then raise insufficient_privilege using message='프로젝트 2개를 등록하면 새 불빛이 열려요.';end if;
   update public.igloos set exterior_light=p_color where owner_id=(select auth.uid()) returning exterior_light into saved;
   if saved is null then raise insufficient_privilege using message='내 이글루를 먼저 정해 주세요.';end if;
   return jsonb_build_object('color',saved,'unlocked',unlocked);

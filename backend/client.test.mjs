@@ -302,7 +302,7 @@ test('exterior light RPCs allow only warm and blue for verified students', async
  const member={id:'11111111-1111-4111-8111-111111111111',role:'student',approved:true},calls=[];
  const api={auth:{getUser:async()=>({data:{user:{id:member.id}}})},from(table){if(table==='igloos')return {select:()=>({order:async()=>({data:homes})})};if(table==='members')return {select:()=>({eq:()=>({maybeSingle:async()=>({data:member})})})};throw Error('unexpected table');},rpc:async(name,args)=>{calls.push([name,args]);return {data:{color:'blue',unlocked:true}};}};
  const backend=createVillageBackend({config,loadSdk:async()=>({createClient:()=>api})});
- await assert.rejects(backend.setExteriorLight('pink'),/색상/);await backend.getExteriorLight();await backend.setExteriorLight('blue');
+ await assert.rejects(backend.setExteriorLight('pink'),/색상/);await backend.setExteriorLight('mint').catch(()=>{});calls.length=0;await backend.getExteriorLight();await backend.setExteriorLight('blue');
  assert.deepEqual(calls,[['get_exterior_light',undefined],['set_exterior_light',{p_color:'blue'}]]);
 });
 

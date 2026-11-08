@@ -528,10 +528,10 @@ function addCrystal(scene, offset = 0, seedStart = 11) {
   return { group, hit, anchor, update, setFocus: v => { focus = v; } };
 }
 
-// 천장 가운데 매달린 조명. 색은 '조명 변경'(프로젝트 2개로 해금) 설정을 따른다: 기본 은은한 주황, 라벤더 보라.
+// 천장 가운데 매달린 조명. 색은 '조명 변경'(프로젝트 2개로 해금) 설정을 따른다: 기본 은은한 주황, 라벤더 보라, 민트, 노랑.
 // 구운 벽·바닥 밝기. 1이면 구운 그대로, 낮출수록 방이 은은하게 어두워져 천장 조명과 수정이 돋보인다(다시 굽지 않아도 됨).
 const ROOM_SHADE = new THREE.Color(0.52, 0.53, 0.6);
-const LAMP_COLORS = { warm: 0xff9440, blue: 0xb184ff };
+const LAMP_COLORS = { warm: 0xff9440, blue: 0xb184ff, mint: 0x52eec0, yellow: 0xffd23f };
 const LAMP_Y = 7.4;
 // 조명 색 번짐 막의 반지름. 카메라는 이 막보다 늘 안쪽에 있어야 색 경계가 보이지 않는다(moveCamera에서 막음).
 const WASH_R = DOME_R - 0.05;
