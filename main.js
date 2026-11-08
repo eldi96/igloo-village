@@ -425,83 +425,52 @@ const hitGeo = new THREE.SphereGeometry(R * 1.08, 10, 8);
 let idx = 0;
 
 // 천과 깃대 자원은 모든 이글루가 공유한다.
-const flagGeo = new THREE.PlaneGeometry(1.18, 0.72, 24, 12);
-flagGeo.translate(0.59, 0, 0);
-const flagPoleGeo = new THREE.CylinderGeometry(0.028, 0.039, 3.18, 10);
-const flagMetal = new THREE.MeshStandardMaterial({ color: 0x66717a, roughness: 0.48, metalness: 0.7 });
-const flagPoleMat = new THREE.MeshStandardMaterial({ color: 0x514638, roughness: 0.8 });
-const flagRingGeo = new THREE.TorusGeometry(0.049, 0.012, 4, 10);
-const flagCapGeo = new THREE.SphereGeometry(0.054, 10, 6);
-const flagFootGeo = new THREE.CylinderGeometry(0.066, 0.09, 0.28, 10);
-const flagTextures = new Map();
-function flagTexture(color) {
-  if (flagTextures.has(color)) return flagTextures.get(color);
-  const canvas = document.createElement('canvas');
-  canvas.width = 512; canvas.height = 320;
-  const c = canvas.getContext('2d');
-  const tone = new THREE.Color(color).lerp(new THREE.Color(0x414955), 0.26).multiplyScalar(0.86);
-  c.fillStyle = '#' + tone.getHexString(); c.fillRect(0, 0, 512, 320);
-  // 은은한 직조 무늬. 난수를 쓰지 않아 마을 배치에 영향을 주지 않는다.
-  c.fillStyle = 'rgba(255,255,255,.045)';
-  for (let y = 0; y < 320; y += 4) c.fillRect(0, y, 512, 1);
-  c.fillStyle = 'rgba(0,0,0,.045)';
-  for (let x = 0; x < 512; x += 4) c.fillRect(x, 0, 1, 320);
-  c.fillStyle = 'rgba(10,18,27,.16)'; c.fillRect(0, 0, 23, 320);
-  c.strokeStyle = 'rgba(241,233,211,.48)'; c.lineWidth = 1.5;
-  c.setLineDash([5, 5]); c.strokeRect(12, 12, 488, 296); c.setLineDash([]);
-  const map = new THREE.CanvasTexture(canvas);
-  map.colorSpace = THREE.SRGBColorSpace;
-  map.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-  flagTextures.set(color, map);
-  return map;
-}
+// 깃발: 둥근 장대 끝에 두툼하고 모서리가 둥근 긴 깃발(끝은 제비꼬리 모양). 3D 아이콘처럼 말랑하게 보이고 바람에 물결친다.
+const FLAG_L = 0.8, FLAG_H = 0.32, FLAG_NOTCH = 0.15;
+const flagGeo = (() => {
+  // 위·아래 가장자리에 점을 몇 개 두어 물결칠 때 면이 휘게 한다(삼각형 수를 아끼려고 최소한만)
+  const shape = new THREE.Shape(), N = 8;
+  shape.moveTo(0, -FLAG_H / 2);
+  for (let i = 1; i <= N; i++) shape.lineTo(FLAG_L * i / N, -FLAG_H / 2);
+  shape.lineTo(FLAG_L - FLAG_NOTCH, 0);
+  shape.lineTo(FLAG_L, FLAG_H / 2);
+  for (let i = N - 1; i >= 0; i--) shape.lineTo(FLAG_L * i / N, FLAG_H / 2);
+  shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.03, bevelEnabled: true, bevelThickness: 0.028, bevelSize: 0.026, bevelSegments: 1, curveSegments: 1 });
+  geo.translate(0.03, 0, -0.015);
+  return geo;
+})();
+const flagPoleGeo = new THREE.CapsuleGeometry(0.05, 1.4, 1, 6);   // 깃발 끝이 돔 꼭대기 높이쯤 오도록 낮춤
+const flagPoleMat = new THREE.MeshStandardMaterial({ color: 0x8e9fb3, roughness: 0.55 });
 const flagDeform = `
   uniform float flagTime;
   uniform float flagPhase;
   vec3 flagPoint(vec3 p) {
-    float u = clamp(p.x / 1.18, 0.0, 1.0);
-    float v = p.y / 0.72 + 0.5;
+    float u = clamp(p.x / ${FLAG_L.toFixed(2)}, 0.0, 1.0);
     float t = flagTime;
-    float gust = 0.72 + 0.22 * sin(t * 0.63 + flagPhase);
-    float wave = sin(u * 7.0 - t * 2.5 + flagPhase + v * 0.7);
-    float ripple = sin(u * 17.0 - t * 4.1 + v * 3.0 + flagPhase) * 0.022;
-    p.z += pow(u, 1.15) * (wave * 0.14 * gust + ripple + 0.07);
-    p.y -= 0.105 * u + 0.045 * sin(v * 3.141593) * exp(-u * 9.0);
-    p.y += u * u * 0.025 * sin(u * 8.0 - t * 2.5 + flagPhase);
-    p.x -= u * u * (0.025 + 0.025 * wave);
+    p.z += u * sin(u * 5.0 - t * 1.8 + flagPhase) * 0.09;
+    p.y += u * sin(u * 4.0 - t * 1.8 + flagPhase) * 0.025;
     return p;
   }
 `;
 const makeFlag = (ig, color) => {
   const g = new THREE.Group();
-  g.position.set(R + 0.35, 0, 0.7);
+  // 돔 뒤쪽 오른편 밑동 바로 바깥(입구 반대쪽, 앞에서 보면 오른쪽 어깨 너머로 깃발이 보인다)
+  g.position.set(1.6, 0, -1.35);
   const pole = new THREE.Mesh(flagPoleGeo, flagPoleMat);
-  pole.position.y = 1.59; g.add(pole);
-  const foot = new THREE.Mesh(flagFootGeo, flagMetal);
-  foot.position.y = 0.14; g.add(foot);
-  const cap = new THREE.Mesh(flagCapGeo, flagMetal);
-  cap.position.y = 3.2; g.add(cap);
-  for (const y of [2.34, 3.06]) {
-    const ring = new THREE.Mesh(flagRingGeo, flagMetal);
-    ring.rotation.x = Math.PI / 2; ring.position.y = y; g.add(ring);
-  }
+  pole.position.y = 0.75; g.add(pole);
   const time = { value: 0 }, phase = { value: rng() * 6 };
-  const material = new THREE.MeshStandardMaterial({
-    map: flagTexture(color), side: THREE.DoubleSide, roughness: 0.94, metalness: 0
-  });
-  // GPU에서 천의 정점과 법선을 함께 변형해 CPU 계산과 매 프레임 전송을 줄인다.
+  // 밤 조명에서도 색이 탁해지지 않게 자기 색으로 은은하게 밝힌다
+  // 깃발 색은 주인마다 FLAG_COLORS 세 가지 중 하나.
+  // 파란 밤 조명에 갈색으로 탁해지지 않게 아주 약하게만 자기 색으로 밝힌다
+  const material = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.15, roughness: 0.5, metalness: 0 });
   material.onBeforeCompile = shader => {
     shader.uniforms.flagTime = time; shader.uniforms.flagPhase = phase;
-    shader.vertexShader = flagDeform + shader.vertexShader;
-    shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>', `
-      vec3 fx = flagPoint(position + vec3(0.002, 0.0, 0.0)) - flagPoint(position - vec3(0.002, 0.0, 0.0));
-      vec3 fy = flagPoint(position + vec3(0.0, 0.002, 0.0)) - flagPoint(position - vec3(0.0, 0.002, 0.0));
-      vec3 objectNormal = normalize(cross(fx, fy));
-    `).replace('#include <begin_vertex>', 'vec3 transformed = flagPoint(position);');
+    shader.vertexShader = flagDeform + shader.vertexShader.replace('#include <begin_vertex>', 'vec3 transformed = flagPoint(position);');
   };
-  material.customProgramCacheKey = () => 'igloo-cloth-v1';
+  material.customProgramCacheKey = () => 'igloo-puffy-flag-v1';
   const cloth = new THREE.Mesh(flagGeo, material);
-  cloth.position.set(0.045, 2.7, 0); g.add(cloth);
+  cloth.position.set(0.02, 1.3, 0); g.add(cloth);
   ig.group.add(g);
   flags.push({ time });
   return g;
@@ -1260,10 +1229,13 @@ async function claim(ig) {
   }
 }
 // 사람마다 깃발 색이 달라지되, 누가 봐도 같은 색이 되도록 계정 ID에서 뽑는다
+// 깃발 색은 세 가지 중 하나. 누가 봐도 같은 색이 되도록 계정 ID에서 고른다
+// 등불 금빛(가로등·문틈 불빛), 코랄(따뜻한 짝), 오로라 민트(하늘 오로라와 같은 계열). 파란 밤 마을에서 모두 또렷하다
+const FLAG_COLORS = [0xf0b45a, 0xee8f7a, 0x86cdb8];
 const flagColorOf = id => {
   let h = 0;
   for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return new THREE.Color().setHSL((h % 360) / 360, 0.62, 0.52).getHex();
+  return FLAG_COLORS[h % FLAG_COLORS.length];
 };
 let syncing = null, syncAgain = false;
 // DB의 입주 상태를 마을에 반영한다. raiseHome은 깃발을 올리는 연출을 보여줄 집이다.
