@@ -136,9 +136,9 @@ create policy mail_read on public.mail_messages for select to authenticated usin
   (select private.is_member()) and (recipient_id = (select auth.uid()) or sender_id = (select auth.uid()))
 );
 create policy mail_send on public.mail_messages for insert to authenticated with check (
-  (select private.is_instructor()) and sender_id = (select auth.uid()) and exists (
+  (select private.is_member()) and sender_id = (select auth.uid()) and exists (
     select 1 from public.igloos i join public.members m on m.id = i.owner_id
-    where i.owner_id = recipient_id and m.approved and m.role = 'student'
+    where i.owner_id = recipient_id and m.approved
   )
 );
 create policy mail_mark_read on public.mail_messages for update to authenticated
@@ -150,14 +150,14 @@ create function public.send_mail(p_recipient_ids uuid[], p_body text default '',
 language plpgsql security invoker set search_path = '' as $$
 declare wanted integer; valid integer; sent integer;
 begin
-  if not private.is_instructor() then raise insufficient_privilege using message = '강사 계정만 우편을 보낼 수 있습니다.'; end if;
+  if not private.is_member() then raise insufficient_privilege using message = '승인된 회원만 우편을 보낼 수 있습니다.'; end if;
   select count(distinct id) into wanted from unnest(p_recipient_ids) as r(id);
   if wanted < 1 or wanted > 31 or array_position(p_recipient_ids, null) is not null then
-    raise invalid_parameter_value using message = '받는 수강생을 선택해주세요.';
+    raise invalid_parameter_value using message = '받는 회원을 선택해주세요.';
   end if;
   select count(*) into valid from public.igloos i join public.members m on m.id = i.owner_id
-    where i.owner_id = any(p_recipient_ids) and m.approved and m.role = 'student';
-  if valid <> wanted then raise invalid_parameter_value using message = '현재 입주한 수강생만 선택할 수 있습니다.'; end if;
+    where i.owner_id = any(p_recipient_ids) and m.approved;
+  if valid <> wanted then raise invalid_parameter_value using message = '현재 입주한 승인 회원만 선택할 수 있습니다.'; end if;
   insert into public.mail_messages(sender_id, recipient_id, body, link)
     select auth.uid(), id, coalesce(p_body, ''), coalesce(p_link, '') from (select distinct unnest(p_recipient_ids) as id) as recipients;
   get diagnostics sent = row_count;

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { villageBackend } from './backend/client.js?v=dash1';
+import { villageBackend } from './backend/client.js?v=member-mail1';
 import { mountAuth } from './auth-ui.js';
 import { mountChat } from './chat-ui.js';
-import { mountCommentMailbox } from './comment-mailbox.js?v=auto-open';
+import { mountCommentMailbox } from './comment-mailbox.js?v=received-mail1';
 import { createQualityControl } from './quality.js';
 import { addStatsBuilding } from './stats-building.js?v=hut4';
 import { mountAnonymousBoard } from './anonymous-board.js?v=note1';
@@ -1475,8 +1475,14 @@ async function goInside(ig, projectId = null) {
       onOpen: () => { bar.hidden = true; canvas.style.cursor = ''; lighthouseRoom.setMapHovered(false); },
       onClose: () => { bar.hidden = false; }
     });
-    if (!mailComposer) mailComposer = (await import('./lighthouse-mail.js')).createLighthouseMail({
-      getHomes: () => igloos.filter(home => !home.house).map((home, id) => ({ ...places[id], id, owner: home.mine ? '나' : home.owner })),
+    if (!mailComposer) mailComposer = (await import('./lighthouse-mail.js?v=write-only2')).createLighthouseMail({
+      backend: villageBackend,
+      getHomes: async () => {
+        const [homes, names] = await Promise.all([villageBackend.getMap(), villageBackend.getMemberNames()]);
+        const byId = new Map(names.map(member => [member.id, member.display_name]));
+        return homes.map(home => ({ ...places[home.id], id: home.id, recipientId: home.owner_id,
+          owner: home.owner_id && byId.has(home.owner_id) ? byId.get(home.owner_id) : null }));
+      },
       hub: HUB, lighthouse: LIGHTHOUSE,
       onOpen: () => { bar.hidden = true; canvas.style.cursor = ''; lighthouseRoom.setMapHovered(false); },
       onClose: () => { bar.hidden = false; }

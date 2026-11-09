@@ -1,5 +1,5 @@
-// 등대 우편 작성 화면 시안. 저장·전송·사용자 권한은 아직 연결하지 않는다.
-export function createLighthouseMail({ getHomes, hub, lighthouse, onOpen, onClose }) {
+// 등대 책상에서 실제 입주 회원을 골라 우편을 보낸다. 권한·수신자 검증은 DB에서 다시 한다.
+export function createLighthouseMail({ backend, getHomes, hub, lighthouse, onOpen, onClose }) {
   const style = document.createElement('style');
   style.textContent = `
     .lmail { --paper:#eee9de; --ink:#283d3e; --muted:#73796f; --line:#d6d5c9; --gold:#a4864e; width:min(1050px,calc(100vw - 40px)); max-width:none; max-height:calc(100dvh - 40px); box-sizing:border-box; padding:0; border:1px solid #ffffff55; border-radius:20px; background:var(--paper); color:var(--ink); font:13px/1.6 system-ui,'Malgun Gothic',sans-serif; box-shadow:0 30px 100px #0007; overflow:auto; }
@@ -57,23 +57,24 @@ export function createLighthouseMail({ getHomes, hub, lighthouse, onOpen, onClos
   const dialog = document.createElement('dialog');
   dialog.className = 'lmail'; dialog.setAttribute('aria-labelledby', 'lmail-title');
   dialog.innerHTML = `
-    <header class="lmail-head"><div><div class="lmail-kicker">LIGHTHOUSE POST · 미리보기</div><h2 id="lmail-title">마을에 보내기</h2><p class="lmail-sub">깃발이 있는 이글루를 골라, 함께 보고 싶은 이야기를 남겨보세요.</p></div><button type="button" class="lmail-close" aria-label="우편 작성 닫기">×</button></header>
-    <div class="lmail-body"><section class="lmail-map-side" aria-label="받는 이글루 선택"><div class="lmail-map-top"><span class="lmail-eyebrow">01 — 받는 이글루</span><button class="lmail-link" type="button" data-select-all>전체 선택</button></div><div class="lmail-map" role="group" aria-label="마을 이글루 배치도"></div><div class="lmail-legend"><span><i class="lmail-dot"></i>입주한 이글루</span><span><i class="lmail-dot empty"></i>빈 이글루</span><span>잠긴 이글루에도 보낼 수 있어요</span></div><div class="lmail-empty"><p data-sample-caption></p><button type="button" class="lmail-link" data-sample-toggle>예시 수강생으로 보기</button></div></section>
-    <section class="lmail-form-side"><div class="lmail-recipients" aria-live="polite"><div class="lmail-eyebrow">02 — 전할 이야기</div><div class="lmail-count" data-count>받는 사람을 골라주세요</div><div class="lmail-names" data-names></div></div><form data-compose><label for="lmail-message">메시지</label><textarea id="lmail-message" placeholder="이 영상의 접근 방식이 좋아서 함께 나눕니다."></textarea><label for="lmail-url">함께 볼 링크 <span class="lmail-eyebrow">선택</span></label><input id="lmail-url" type="url" placeholder="https://www.youtube.com/..." inputmode="url"><div class="lmail-form-foot"><p class="lmail-small">현재는 화면 시안입니다.<br>실제 우편은 발송되지 않아요.</p><button class="lmail-primary" type="submit" data-review disabled>내용 확인</button></div></form><div class="lmail-review" data-review-panel hidden><h3>보내기 전 확인</h3><p class="lmail-sub" data-review-to></p><p class="lmail-review-text" data-review-text></p><a data-review-url target="_blank" rel="noopener noreferrer" hidden></a><p class="lmail-review-note">실제 발송은 아직 연결하지 않았습니다. 이 화면에서는 받는 사람과 내용만 확인할 수 있어요.</p><div class="lmail-form-foot"><button type="button" class="lmail-link" data-edit>내용 수정</button><button type="button" class="lmail-primary" disabled>전송 연결 전</button></div></div></section></div>
+    <header class="lmail-head"><div><div class="lmail-kicker">LIGHTHOUSE POST</div><h2 id="lmail-title">마을에 보내기</h2><p class="lmail-sub">깃발이 있는 이글루를 골라, 함께 보고 싶은 이야기를 남겨보세요.</p></div><button type="button" class="lmail-close" aria-label="우편 작성 닫기">×</button></header>
+    <div class="lmail-body"><section class="lmail-map-side" aria-label="받는 이글루 선택"><div class="lmail-map-top"><span class="lmail-eyebrow">01 — 받는 이글루</span><button class="lmail-link" type="button" data-select-all>전체 선택</button></div><div class="lmail-map" role="group" aria-label="마을 이글루 배치도"></div><div class="lmail-legend"><span><i class="lmail-dot"></i>입주한 이글루</span><span><i class="lmail-dot empty"></i>빈 이글루</span><span>잠긴 이글루에도 보낼 수 있어요</span></div><div class="lmail-empty"><p data-sample-caption></p></div></section>
+    <section class="lmail-form-side"><div class="lmail-recipients" aria-live="polite"><div class="lmail-eyebrow">02 — 전할 이야기</div><div class="lmail-count" data-count>받는 사람을 골라주세요</div><div class="lmail-names" data-names></div></div><form data-compose><label for="lmail-message">메시지</label><textarea maxlength="5000" id="lmail-message" placeholder="이 영상의 접근 방식이 좋아서 함께 나눕니다."></textarea><label for="lmail-url">함께 볼 링크 <span class="lmail-eyebrow">선택</span></label><input maxlength="2048" id="lmail-url" type="url" placeholder="https://www.youtube.com/..." inputmode="url"><div class="lmail-form-foot"><p class="lmail-small">선택한 사람의 우편함으로<br>메시지가 전달됩니다.</p><button class="lmail-primary" type="submit" data-review disabled>내용 확인</button></div></form><div class="lmail-review" data-review-panel hidden><h3>보내기 전 확인</h3><p class="lmail-sub" data-review-to></p><p class="lmail-review-text" data-review-text></p><a data-review-url target="_blank" rel="noopener noreferrer" hidden></a><p class="lmail-review-note">받는 사람과 내용을 확인한 뒤 보내주세요.</p><div class="lmail-form-foot"><button type="button" class="lmail-link" data-edit>내용 수정</button><button type="button" class="lmail-primary" data-send>보내기</button></div></div></section></div>
   `;
   document.body.appendChild(dialog);
   const q = selector => dialog.querySelector(selector);
   const map = q('.lmail-map'), form = q('[data-compose]');
   const message = q('#lmail-message'), url = q('#lmail-url');
   const review = q('[data-review-panel]'), selected = new Set();
-  let sampleMode = false, homes = [], previousFocus = null;
+  let homes = [], previousFocus = null, busy = false, loading = false, revision = 0;
+  const note = q('.lmail-review-note'); note.setAttribute('role', 'status');
   const mx = x => (x + 42) / 84 * 100, mz = z => (z + 39) / 56 * 100;
   const svgX = x => mx(x) * 9, svgY = z => mz(z) * 6.2;
   const iglooIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17a9 9 0 0 1 18 0v2H3Z" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10 19v-4a2 2 0 0 1 4 0v4M4 12h16M8 8l2 4m6-4-2 4M6 15h4m4 0h4" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>';
   const selectable = () => homes.filter(home => home.owner);
   function updateSelection() {
     const recipients = selectable().filter(home => selected.has(home.id));
-    q('[data-count]').textContent = recipients.length ? `선택한 수강생 ${recipients.length}명` : '받는 사람을 골라주세요';
+    q('[data-count]').textContent = recipients.length ? `선택한 회원 ${recipients.length}명` : '받는 사람을 골라주세요';
     q('[data-names]').textContent = recipients.map(home => home.owner).join(' · ');
     q('[data-review]').disabled = !recipients.length;
     q('[data-select-all]').disabled = !selectable().length;
@@ -82,8 +83,7 @@ export function createLighthouseMail({ getHomes, hub, lighthouse, onOpen, onClos
     q('[data-review-to]').textContent = `받는 사람 · ${recipients.map(home => home.owner).join(', ')}`;
   }
   function renderMap() {
-    homes = getHomes().map(home => ({ ...home }));
-    if (sampleMode) [1, 4, 16, 22].forEach((id, i) => { if (homes[id]) homes[id].owner = `수강생 ${String(i + 1).padStart(2, '0')}`; });
+
     for (const id of selected) if (!homes.some(home => home.id === id && home.owner)) selected.delete(id);
     map.innerHTML = `<svg viewBox="0 0 900 620" preserveAspectRatio="none" aria-hidden="true"><defs><pattern id="lmail-grid" width="36" height="36" patternUnits="userSpaceOnUse"><path d="M36 0H0V36" fill="none" stroke="#637d6212" stroke-width="1"/></pattern></defs><rect width="900" height="620" fill="url(#lmail-grid)"/><g fill="none" stroke="#b3bea9" stroke-width="6" stroke-linecap="round"><path d="M450 477C407 438 475 389 444 298S468 173 450 34"/><path d="M400 480C318 426 244 430 50 459M500 472C584 422 650 374 845 367M450 522C470 558 441 580 449 610"/><ellipse cx="${svgX(hub.x)}" cy="${svgY(hub.z)}" rx="77" ry="62"/></g><ellipse cx="${svgX(hub.x)}" cy="${svgY(hub.z)}" rx="43" ry="33" fill="#afc4bf" stroke="#d1dad0" stroke-width="7"/><g transform="translate(${svgX(lighthouse.x)},${svgY(lighthouse.z)})" fill="#62766a"><path d="M-8 15-5-12H5L8 15ZM-7-14H7V-21H-7ZM-11-22 0-29 11-22Z"/><text y="31" text-anchor="middle" font-family="system-ui,sans-serif" font-size="14">등대</text></g><text x="860" y="36" text-anchor="middle" font-family="system-ui,sans-serif" font-size="14" fill="#7f8e7d">N ↑</text></svg>`;
     homes.forEach(home => {
@@ -100,9 +100,7 @@ export function createLighthouseMail({ getHomes, hub, lighthouse, onOpen, onClos
       button.onclick = () => { selected.has(home.id) ? selected.delete(home.id) : selected.add(home.id); updateSelection(); };
       map.appendChild(button);
     });
-    q('[data-sample-caption]').textContent = sampleMode ? '예시 수강생 4명으로 살펴보는 중입니다. 실제 입주 상태는 바뀌지 않아요.' : selectable().length ? '빈 이글루는 선택할 수 없습니다.' : '아직 깃발이 꽂힌 이글루가 없습니다.';
-    q('[data-sample-caption]').classList.toggle('lmail-sample-note', sampleMode);
-    q('[data-sample-toggle]').textContent = sampleMode ? '실제 마을로 돌아가기' : '예시 수강생으로 보기';
+    q('[data-sample-caption]').textContent = selectable().length ? '빈 이글루는 선택할 수 없습니다.' : '현재 메시지를 받을 수 있는 이글루가 없습니다.';
     updateSelection();
   }
   q('[data-select-all]').onclick = () => {
@@ -110,7 +108,6 @@ export function createLighthouseMail({ getHomes, hub, lighthouse, onOpen, onClos
     const all = eligible.length && eligible.every(home => selected.has(home.id));
     selected.clear(); if (!all) eligible.forEach(home => selected.add(home.id)); updateSelection();
   };
-  q('[data-sample-toggle]').onclick = () => { sampleMode = !sampleMode; selected.clear(); review.hidden = true; form.hidden = false; renderMap(); };
   message.oninput = url.oninput = () => { message.setCustomValidity(''); url.setCustomValidity(''); };
   form.onsubmit = event => {
     event.preventDefault();
@@ -124,10 +121,27 @@ export function createLighthouseMail({ getHomes, hub, lighthouse, onOpen, onClos
     q('[data-review-text]').textContent = message.value.trim() || '함께 볼 링크를 보냅니다.';
     const link = q('[data-review-url]'); link.hidden = !url.value.trim();
     if (!link.hidden) { link.href = url.value.trim(); link.textContent = url.value.trim(); }
-    form.hidden = true; review.hidden = false;
+    form.hidden = true; review.hidden = false; note.textContent = '받는 사람과 내용을 확인한 뒤 보내주세요.';
+    map.inert = true; q('[data-select-all]').disabled = true;
   };
-  q('[data-edit]').onclick = () => { review.hidden = true; form.hidden = false; message.focus(); };
-  function close() { if (dialog.open) dialog.close(); }
+  q('[data-edit]').onclick = () => { if (busy) return; review.hidden = true; form.hidden = false; map.inert = false; updateSelection(); message.focus(); };
+  q('[data-send]').onclick = async () => {
+    if (busy || loading || !selected.size) return;
+    const recipients = [...new Set(selectable().filter(h => selected.has(h.id)).map(h => h.recipientId))];
+    busy = true; q('[data-send]').disabled = true; q('[data-edit]').disabled = true;
+    note.textContent = '보내는 중이에요…';
+    try {
+      const count = await backend.sendMail(recipients, { body: message.value.trim(), link: url.value.trim() });
+      note.textContent = `${count}명에게 메시지를 보냈어요.`;
+      q('[data-send]').textContent = '전송 완료';
+      message.value = ''; url.value = ''; selected.clear();
+    } catch (error) {
+      note.textContent = error?.message || '보내지 못했어요. 다시 시도해 주세요.';
+      q('[data-send]').disabled = false; q('[data-edit]').disabled = false;
+    } finally { busy = false; }
+  };
+  dialog.addEventListener('cancel', event => { if (busy) event.preventDefault(); });
+  function close() { if (dialog.open && !busy) { revision++; dialog.close(); } }
   q('.lmail-close').onclick = close;
   dialog.addEventListener('click', event => {
     if (event.target !== dialog) return;
@@ -136,10 +150,24 @@ export function createLighthouseMail({ getHomes, hub, lighthouse, onOpen, onClos
   });
   dialog.addEventListener('close', () => { onClose?.(); if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true }); });
   return {
-    open() {
+    async open() {
       if (dialog.open) return;
+      const request = ++revision;
       previousFocus = document.activeElement;
-      review.hidden = true; form.hidden = false; renderMap(); onOpen?.(); dialog.showModal(); q('.lmail-close').focus({ preventScroll: true });
+      review.hidden = true; form.hidden = false; map.inert = false;
+      q('[data-send]').disabled = false; q('[data-send]').textContent = '보내기'; q('[data-edit]').disabled = false;
+      homes = []; selected.clear(); renderMap(); loading = true;
+      q('[data-sample-caption]').textContent = '받는 사람을 불러오는 중이에요…';
+      onOpen?.(); dialog.showModal(); q('.lmail-close').focus({ preventScroll: true });
+      try {
+        const member = await backend.getMembership();
+        if (!member?.approved) throw new Error('승인된 회원으로 로그인해주세요.');
+        const loaded = await getHomes();
+        if (request !== revision || !dialog.open) return;
+        homes = loaded.map(home => ({ ...home })); renderMap();
+      } catch (error) {
+        if (request === revision && dialog.open) q('[data-sample-caption]').textContent = error?.message || '받는 사람을 불러오지 못했어요. 창을 닫고 다시 시도해 주세요.';
+      } finally { if (request === revision) loading = false; }
     },
     close,
     isOpen: () => dialog.open

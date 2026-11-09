@@ -53,8 +53,9 @@ do $$ declare affected integer; begin
   get diagnostics affected = row_count;
   if affected <> 0 then raise exception 'FAIL: other student door change'; end if;
   begin
+    perform set_config('request.jwt.claims', json_build_object('sub', gen_random_uuid(), 'role', 'authenticated')::text, true);
     perform public.send_mail(array[current_setting('igloo.test_a')::uuid], '허용되면 안 되는 우편', '');
-    raise exception 'FAIL: student sends teacher mail';
+    raise exception 'FAIL: nonmember sends mail';
   exception when insufficient_privilege then null; end;
 end $$;
 reset role;
@@ -142,3 +143,5 @@ do $$ begin
   end if;
 end $$;
 rollback;
+
+-- 승인 회원 간 발송·수신함 격리는 verify-member-mail.sql의 독립 롤백 시험으로 확인.
