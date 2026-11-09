@@ -1458,7 +1458,7 @@ async function goInside(ig, projectId = null) {
   if (ig.house) {
     if (!lighthouseRoom) lighthouseRoom = (await import('./lighthouse-room.js?v=lh-cat1')).createLighthouseRoom({ renderer, isBlocked: () => Boolean(mailComposer?.isOpen() || archive?.isOpen() || dashboard?.isOpen()), places, hub: HUB, lighthouse: LIGHTHOUSE });
     // 책장을 누르면 여는 자료보관함. 강사 계정이면 올리기·수정·삭제가 더 보인다.
-    if (!archive) archive = (await import('./lighthouse-archive.js?v=arch8')).createLighthouseArchive({
+    if (!archive) archive = (await import('./lighthouse-archive.js?v=category-width2')).createLighthouseArchive({
       backend: villageBackend, getMember: () => auth.member,
       onOpen: () => { bar.hidden = true; canvas.style.cursor = ''; lighthouseRoom.setMapHovered(false); },
       onClose: () => { bar.hidden = false; }

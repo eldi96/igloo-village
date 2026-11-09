@@ -330,6 +330,14 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
         throw error;
       }
     },
+    async setMaterialCategoryOrder(id, sortOrder, expectedOrder) {
+      if (!CATEGORY_ID.test(String(id ?? '')) || !Number.isInteger(sortOrder) || !Number.isInteger(expectedOrder)
+        || Math.abs(sortOrder) > 2147483647) throw new Error('분류 순서를 확인해 주세요.');
+      const { api } = await requireMaterialEditor();
+      // 다른 편집자의 동시 변경은 덮어쓰지 않고 다시 조회하도록 한다.
+      return unwrap(await api.from('material_categories').update({ sort_order: sortOrder })
+        .eq('id', id).eq('sort_order', expectedOrder).select('id,label,sort_order').single());
+    },
     async renameMaterialCategory(id, label) {
       const name = String(label ?? '').trim();
       if (!CATEGORY_ID.test(String(id ?? ''))) throw new Error('존재하지 않는 분류입니다.');
