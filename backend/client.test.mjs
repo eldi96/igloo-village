@@ -405,3 +405,22 @@ test('improvement ideas validate input before connecting and use the member RPCs
   assert.equal(await backend.setImprovementIdeaStatus(id,'voting'),true);
   assert.deepEqual(calls,[['list_improvement_ideas',undefined],['react_improvement_idea',{p_id:id,p_value:-1}],['set_improvement_idea_status',{p_id:id,p_status:'voting'}]]);
 });
+
+
+test('approved student mail uses the existing RPC, deduplicates recipients and preserves the server result', async () => {
+  const student = { id: '11111111-1111-4111-8111-111111111111', role: 'student', approved: true };
+  const to = '22222222-2222-4222-8222-222222222222';
+  const calls = [];
+  const api = {
+    auth: { getUser: async () => ({ data: { user: { id: student.id } } }) },
+    from(table) {
+      if (table === 'igloos') return { select: () => ({ order: async () => ({ data: homes }) }) };
+      assert.equal(table, 'members');
+      return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: student }) }) }) };
+    },
+    rpc: async (name, args) => { calls.push({ name, args }); return { data: 1 }; }
+  };
+  const backend = createVillageBackend({ config, loadSdk: async () => ({ createClient: () => api }) });
+  assert.equal(await backend.sendMail([to, to], { body: ' hello ', link: 'https://example.com' }), 1);
+  assert.deepEqual(calls, [{ name: 'send_mail', args: { p_recipient_ids: [to], p_body: 'hello', p_link: 'https://example.com' } }]);
+});

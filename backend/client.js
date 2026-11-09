@@ -573,7 +573,7 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
       if (!recipients.length || recipients.length > 31 || recipients.some(id => !UUID.test(id))) throw new Error('받는 수강생을 선택해주세요.');
       const safeLink = checkLink(link, true);
       if ((!body.trim() && !safeLink) || body.length > 5000) throw new Error('메시지 또는 링크를 입력해주세요.');
-      const { api } = await requireMember('instructor');
+      const { api } = await requireMember();
       return unwrap(await api.rpc('send_mail', { p_recipient_ids: recipients, p_body: body.trim(), p_link: safeLink }));
     },
     async subscribeMap(callback) {
