@@ -230,12 +230,17 @@ const places = ROWS.flatMap(([z0, xs]) => xs.map(x0 => Array.isArray(x0) ? x0 : 
   return { x, z, yaw, radius: R, doorX: x + Math.sin(yaw) * (R + 2), doorZ: z + Math.cos(yaw) * (R + 2) };
 });
 
-const FLAT = [{ x: HUB.x, z: HUB.z, y: 0.2, r0: 8, r1: 14 }, { x: LIGHTHOUSE.x, z: LIGHTHOUSE.z, y: 0.2, r0: 3.5, r1: 7 }, ...places.map(p => ({ x: p.x, z: p.z, y: 0.2, r0: 3.2, r1: 7 })), { x: STATS_SITE.x, z: STATS_SITE.z, y: .2, r0: 3.4, r1: 4.5 }];
+// 🌊 호수 중심(HUB)을 -0.75m 깊이로 파내고, 가장자리 반경을 호수 크기에 맞게 설정
+const FLAT = [
+  { x: HUB.x, z: HUB.z, y: 0.2, r0: 8, r1: 14 },
+  { x: LIGHTHOUSE.x, z: LIGHTHOUSE.z, y: 0.2, r0: 3.5, r1: 7 },
+  ...places.map(p => ({ x: p.x, z: p.z, y: 0.2, r0: 3.2, r1: 7 })),
+  { x: STATS_SITE.x, z: STATS_SITE.z, y: .2, r0: 3.4, r1: 4.5 }
+];
 const heightAt = createHeightAt(FLAT);
 
 const snowBump = makeSnowBump(THREE, renderer.capabilities.getMaxAnisotropy());
 addGround(THREE, scene, heightAt, snowBump);
-
 // 산 쪽에 머무는 얇은 타이포그래피. 한 장의 텍스처만 사용한다.
 const mountainTitleAnchor = new THREE.Vector3(0, 22, -82);
 const TITLE_DEPTH = 1.08;
@@ -901,7 +906,7 @@ let santa = null;
 // 주인이 있는 이글루 번호. 마을 모듈이 늦게 불러와져도 우편함을 맞게 세운다.
 let ownedHomeIds = [];
 let polarBear = null;
-import('./village.js?v=fire-pin1')
+import('./village.js?v=lake-depth-fix2')
   .then(m => {
     // 모닥불은 관측소를 옮기기 전 자리(도로 오른쪽)에 고정한다. 난수 배치에 맡기면 다른 건물을 옮길 때마다 산타·게시판까지 함께 움직인다.
     village = m.addVillage(scene, { places, hub: HUB, heightAt, rng, lighthouse: LIGHTHOUSE, statsSite: STATS_SITE, fireSpot: { x: 5.4, z: 12.01 } });
