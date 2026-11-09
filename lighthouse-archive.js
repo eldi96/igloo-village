@@ -59,12 +59,16 @@ export function createLighthouseArchive({ backend, getMember, onOpen, onClose })
   .lar-primary { display: inline-flex; align-items: center; gap: 8px; padding: 9px 18px; border-radius: 999px; background: var(--sage); color: #fff !important; font-weight: 500; font-size: 12px; text-decoration: none; box-shadow: 0 4px 12px rgba(107,127,110,.28); }
   .lar-ghost { padding: 8px 16px; border-radius: 999px; background: var(--card); font-size: 12px; box-shadow: 0 2px 8px rgba(110,90,66,.08), inset 0 0 0 1px var(--line); }
   .lar-close { width: 34px; height: 34px; border-radius: 50%; background: var(--card) !important; font-size: 16px; line-height: 1; color: var(--sub) !important; box-shadow: 0 2px 8px rgba(110,90,66,.08); }
-  .lar-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 188px minmax(0, 1fr) 280px; gap: 12px; }
-  .lar-nav { padding: 18px 12px; display: flex; flex-direction: column; gap: 4px; }
+  .lar-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 248px minmax(0, 1fr) 280px; gap: 12px; }
+  .lar-body.is-managing { grid-template-columns: 352px minmax(0, 1fr) 280px; }
+  .lar-nav { min-height: 0; overflow-y: auto; padding: 18px 12px; display: flex; flex-direction: column; gap: 4px; }
   .lar-nav .lar-label { padding: 0 8px; }
   .lar-navhead { display: flex; justify-content: space-between; align-items: baseline; padding: 0 8px; }
   .lar-manage { font-size: 11px; color: var(--sage) !important; padding: 2px 4px; border-radius: 6px; }
-  .lar-catedit { display: grid; grid-template-columns: minmax(0,1fr) auto 24px; gap: 6px; align-items: center; padding: 2px 4px 2px 6px; }
+  .lar-catedit { display: grid; grid-template-columns: minmax(0,1fr) auto 24px 24px 24px; gap: 6px; align-items: center; padding: 2px 4px 2px 6px; }
+  .lar-catedit .lar-catmove { color: var(--ink) !important; background: rgba(255,255,255,.5); }
+  .lar-catedit .lar-catmove:disabled { opacity: .3; cursor: default; }
+  .lar-catedit .lar-catmove:not(:disabled):hover { background: var(--accent-soft, #dce6df); }
   .lar-catedit input, .lar-catadd input { min-width: 0; padding: 7px 10px; border-radius: 999px; border: 0; background: #fff; box-shadow: inset 0 0 0 1px var(--line); font: 12px/1.3 inherit; font-family: inherit; color: var(--ink); }
   .lar-catedit span { font-size: 11px; color: var(--sub); font-variant-numeric: tabular-nums; }
   .lar-catedit button { width: 24px; height: 24px; border-radius: 50%; color: #a4594d !important; font-size: 14px; }
@@ -114,7 +118,8 @@ export function createLighthouseArchive({ backend, getMember, onOpen, onClose })
   }
   @media (max-width: 900px) {
     .lar { height: auto; max-height: 100%; padding: 14px; }
-    .lar-body { grid-template-columns: minmax(0,1fr); overflow: auto; }
+    .lar-body, .lar-body.is-managing { grid-template-columns: minmax(0,1fr); overflow: auto; }
+    .lar-body.is-managing .lar-nav { flex-direction: column; overflow: visible; }
     .lar-nav { flex-direction: row; overflow-x: auto; padding: 10px; }
     .lar-nav .lar-label { display: none; }
     .lar-cat { flex: none; gap: 8px; }
@@ -137,7 +142,7 @@ export function createLighthouseArchive({ backend, getMember, onOpen, onClose })
   const $ = sel => veil.querySelector(sel);
   const nav = $('.lar-nav'), list = $('.lar-list'), detail = $('.lar-detail'), count = $('.lar-count'), newBtn = $('[data-act=new]');
   let items = [], filter = 'all', selected = null, editing = null, loadError = '', open = false, closeTimer = 0;
-  let cats = DEFAULT_CATS, managing = false, catError = '';
+  let cats = DEFAULT_CATS, managing = false, catError = '', ordering = false;
   const shownItems = () => filter === 'all' ? items : items.filter(i => i.category === filter);
   const labelOf = id => cats.find(c => c.id === id)?.label || '기타';
   let canEdit = false;   // 강사 계정 또는 자료 담당 명단(DB can_edit_materials)
@@ -150,12 +155,13 @@ export function createLighthouseArchive({ backend, getMember, onOpen, onClose })
       : `<span class="lar-thumb" style="background:${c.tint};color:${c.ink}">${icon(ICONS[item.category] || ICONS.other, 22)}</span>`;
   };
   function renderNav() {
+    nav.parentElement.classList.toggle('is-managing', managing && isInstructor());
     const n = id => id === 'all' ? items.length : items.filter(i => i.category === id).length;
-    const head = `<div class="lar-navhead"><p class="lar-label">Category</p>${isInstructor() ? `<button type="button" class="lar-manage" data-act="manage">${managing ? '완료' : '편집'}</button>` : ''}</div>`;
+    const head = `<div class="lar-navhead"><p class="lar-label">Category</p>${isInstructor() ? `<button type="button" class="lar-manage" data-act="manage" ${ordering ? 'disabled' : ''}>${managing ? '완료' : '편집'}</button>` : ''}</div>`;
     if (managing && isInstructor()) {
       // 분류 관리: 이름을 고치면(엔터·포커스 아웃) 저장, ×로 삭제(자료가 남은 분류는 DB가 막는다), 아래 칸에서 새 분류 추가.
-      nav.innerHTML = head + cats.map(c => `<div class="lar-catedit"><input type="text" maxlength="20" value="${esc(c.label)}" data-rename="${c.id}" aria-label="${esc(c.label)} 분류 이름"><span>${n(c.id)}</span><button type="button" data-delcat="${c.id}" aria-label="${esc(c.label)} 분류 삭제">×</button></div>`).join('')
-        + `<form class="lar-catadd"><input type="text" name="label" maxlength="20" placeholder="새 분류 이름" aria-label="새 분류 이름"><button type="submit" class="lar-primary">추가</button></form><p class="lar-error lar-caterr" role="alert">${esc(catError)}</p>`;
+      nav.innerHTML = head + cats.map((c, index) => `<div class="lar-catedit"><input type="text" maxlength="20" value="${esc(c.label)}" data-rename="${c.id}" ${ordering ? 'disabled' : ''} aria-label="${esc(c.label)} 분류 이름"><span>${n(c.id)}</span><button type="button" class="lar-catmove" data-movecat="${c.id}" data-direction="-1" aria-label="${esc(c.label)} 위로 이동" ${ordering || index === 0 ? 'disabled' : ''}>↑</button><button type="button" class="lar-catmove" data-movecat="${c.id}" data-direction="1" aria-label="${esc(c.label)} 아래로 이동" ${ordering || index === cats.length - 1 ? 'disabled' : ''}>↓</button><button type="button" data-delcat="${c.id}" ${ordering ? 'disabled' : ''} aria-label="${esc(c.label)} 분류 삭제">×</button></div>`).join('')
+        + `<form class="lar-catadd"><input type="text" name="label" maxlength="20" ${ordering ? 'disabled' : ''} placeholder="새 분류 이름" aria-label="새 분류 이름"><button type="submit" class="lar-primary" ${ordering ? 'disabled' : ''}>추가</button></form><p class="lar-error lar-caterr" role="alert">${esc(catError)}</p>`;
       return;
     }
     nav.innerHTML = head + [{ id: 'all', label: '전체' }, ...cats].map(c => `<button type="button" class="lar-cat${filter === c.id ? ' is-on' : ''}" data-cat="${c.id}" aria-pressed="${filter === c.id}"><span>${esc(c.label)}</span><span>${n(c.id)}</span></button>`).join('');
@@ -211,6 +217,32 @@ export function createLighthouseArchive({ backend, getMember, onOpen, onClose })
     if (t.dataset.cat) { filter = t.dataset.cat; editing = null; selected = shownItems()[0] || null; renderNav(); renderList(); renderDetail(); return; }
     if (t.dataset.id) { selected = items.find(i => i.id === t.dataset.id) || null; editing = null; renderList(); renderDetail(); return; }
     if (t.dataset.act === 'manage') { managing = !managing; catError = ''; renderNav(); return; }
+    if (t.dataset.movecat) {
+      if (ordering) return;
+      const index = cats.findIndex(c => c.id === t.dataset.movecat), direction = Number(t.dataset.direction);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= cats.length) return;
+      const moving = cats[index], neighbor = cats[target];
+      ordering = true; catError = ''; renderNav();
+      let firstSaved = false;
+      try {
+        // 인접한 두 분류만 바꾸고 두 번째 저장 실패 시 첫 변경을 되돌린다.
+        const a = Number(moving.sort_order), b = Number(neighbor.sort_order);
+        if (a === b) throw new Error('같은 순서의 분류가 있어요. 새로고침 후 관리자에게 확인해 주세요.');
+        await backend.setMaterialCategoryOrder(moving.id, b, a); firstSaved = true;
+        await backend.setMaterialCategoryOrder(neighbor.id, a, b);
+      } catch (error) {
+        if (firstSaved) {
+          try { await backend.setMaterialCategoryOrder(moving.id, Number(moving.sort_order), Number(neighbor.sort_order)); }
+          catch { catError = '순서 저장이 중단됐어요. 목록을 확인하고 다시 시도해 주세요.'; }
+        }
+        if (!catError) catError = error?.message || '순서를 바꾸지 못했어요.';
+      } finally {
+        ordering = false; await load();
+        nav.querySelector(`[data-movecat="${moving.id}"][data-direction="${direction}"]`)?.focus();
+      }
+      return;
+    }
     if (t.dataset.delcat) {
       const c = cats.find(x => x.id === t.dataset.delcat);
       if (!c || !confirm(`'${c.label}' 분류를 삭제할까요?`)) return;
