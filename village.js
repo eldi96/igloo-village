@@ -514,7 +514,6 @@ export function addVillage(scene, ctx) {
           { x: p.x + c * (p.radius + 1), z: p.z - s * (p.radius + 1), r: 0.4 }
         ];
       }),
-      ...(fireSpot ? [{ x: fireSpot.x + 1.65, z: fireSpot.z - 0.15, r: 0.55 }] : [])
     ],
     setUnreadMailboxes(homes) { mailboxes.userData.setUnreadHomes(homes); },
     setMailboxHovered(home) { mailboxes.userData.setHoveredHome(home); },

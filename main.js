@@ -916,8 +916,8 @@ import('./village.js?v=fire-pin1')
       .then(bear => { polarBear = bear; })
       .catch(error => console.warn('북극곰을 불러오지 못했어요:', error));
     renderer.shadowMap.needsUpdate = true;
-    import('./santa.js?v=lowtri1')
-      .then(({ addSanta }) => addSanta(scene, { fireSpot: village.fireSpot, heightAt, height: R * 0.8 }))
+    import('./santa.js?v=idle15-v1')
+      .then(({ addSanta }) => addSanta(scene, { fireSpot: village.fireSpot, obstacles: [...village.walkingObstacles, {...signSpot,r:.75}], bearPosition: () => polarBear?.root.position, heightAt, height: R * 0.8 }))
       .then(character => { santa = character; renderer.shadowMap.needsUpdate = true; })
       .catch(error => console.warn('산타 모델을 불러오지 못했어요:', error));
   })
