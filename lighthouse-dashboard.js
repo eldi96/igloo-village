@@ -16,7 +16,7 @@ const css = `
 .ldb.is-in { opacity: 1; }
 .ldb[hidden], .ldb [hidden] { display: none !important; }
 .ldb :where(button) { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
-.ldb-win { width: min(1240px, 100%); height: min(760px, 100%); border-radius: 26px; overflow: hidden;
+.ldb-win { position: relative; width: min(1240px, 100%); height: min(760px, 100%); border-radius: 26px; overflow: hidden;
   background: linear-gradient(160deg, #e2bea2 0%, #d8ae8f 55%, #cfa383 100%);
   box-shadow: 0 60px 100px -36px rgba(30,38,42,.65), 0 0 0 1px rgba(255,255,255,.25) inset;
   display: grid; grid-template-rows: 54px 1fr; transform: translateY(14px) scale(.985);
@@ -27,7 +27,8 @@ const css = `
 .ldb-lights i, .ldb-lights button { width: 13px; height: 13px; border-radius: 50%; display: block; box-shadow: var(--up-xs); }
 .ldb-lights button { background: #f4a9a0; position: relative; transition: transform .16s ease-out; }
 .ldb-lights button:active { transform: scale(.85); }
-.ldb-lights button::after { content: '×'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 10px; line-height: 1; color: rgba(110,40,30,.7); opacity: 0; transition: opacity .15s; }
+.ldb-lights button::before { content: ''; position: absolute; inset: -8px; }
+.ldb-lights button::after { content: '×'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 10px; line-height: 1; color: rgba(110,40,30,.7); opacity: 1; transition: opacity .15s; }
 .ldb-lights:hover button::after, .ldb-lights button:focus-visible::after { opacity: 1; }
 .ldb-lights i:nth-of-type(1) { background: #f3d39a; } .ldb-lights i:nth-of-type(2) { background: #aed8c4; }
 .ldb-bar b { font-size: 12.5px; font-weight: 600; margin-left: 4px; color: #3b2f28; }
@@ -116,7 +117,7 @@ const css = `
 .ldb-q.is-done { opacity: .55; }
 .ldb-q.is-done .foot span { background: none; color: var(--sub); padding: 0; box-shadow: none; }
 .ldb-q.is-done { box-shadow: none; background: rgba(251,244,236,.5); }
-.ldb-note { position: absolute; inset: 0; display: grid; place-items: center; font-size: 13px; color: var(--sub); }
+.ldb-note { position: absolute; inset: 54px 0 0; margin: 0; padding: 24px; display: grid; place-items: center; text-align: center; pointer-events: none; font-size: 13px; color: var(--sub); }
 @media (hover: hover) and (pointer: fine) {
   .ldb-p:hover { box-shadow: 7px 8px 16px rgba(62,74,76,.3), -5px -5px 12px rgba(255,255,255,.95); }
   .ldb-seg button:not(.is-on):hover, .ldb-tabs button:not(.is-on):hover { color: var(--ink); }
@@ -248,7 +249,7 @@ export function createLighthouseDashboard({ backend, getOwner, onGoProject, onOp
     </div>`;
   document.body.append(veil);
   const $ = name => veil.querySelector(`[data-out="${name}"]`);
-  let open = false, period = '7', reqFilter = 'all', data = null, loadId = 0, buckets = [];
+  let open = false, allowed = false, previousFocus = null, period = '7', reqFilter = 'all', data = null, loadId = 0, buckets = [];
 
   // 강의실: 보내 준 배치도대로 왼쪽 3석·오른쪽 4석 책상 5줄(35석). 좌석 번호만, 계정은 나중에 연결.
   $('seats').innerHTML = Array.from({ length: 5 }, (_, row) => {
@@ -374,6 +375,7 @@ export function createLighthouseDashboard({ backend, getOwner, onGoProject, onOp
   function setNote(text) { const n = $('note'); n.textContent = text; n.hidden = !text; veil.querySelector('.ldb-grid').style.visibility = text ? 'hidden' : ''; }
 
   async function load(animate = true) {
+    if (!open || !allowed) return;
     const id = ++loadId;
     veil.querySelectorAll('[data-period]').forEach(b => { const on = b.dataset.period === period; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', on); });
     const days = PERIODS.find(p => p.id === period).days;
@@ -384,7 +386,7 @@ export function createLighthouseDashboard({ backend, getOwner, onGoProject, onOp
       data = next; setNote('');
       renderRecent(); renderChart(animate); renderDonut();
     } catch (error) {
-      if (id !== loadId) return;
+      if (id !== loadId || !open) return;
       console.warn('업로드 현황을 불러오지 못했어요:', error?.message);
       setNote('업로드 현황을 불러오지 못했어요. 잠시 뒤 다시 열어 주세요.');
     }
@@ -392,22 +394,33 @@ export function createLighthouseDashboard({ backend, getOwner, onGoProject, onOp
 
   async function openDashboard() {
     if (open) return;
-    open = true; veil.hidden = false; onOpen?.();
-    requestAnimationFrame(() => veil.classList.add('is-in'));
+    const id = ++loadId;
+    previousFocus = document.activeElement;
+    open = true; allowed = false; veil.hidden = false; onOpen?.();
+    requestAnimationFrame(() => { if (open) veil.classList.add('is-in'); });
     renderRequests();
+    veil.querySelectorAll('[data-period]').forEach(button => { button.disabled = true; });
     setNote('불러오는 중이에요');
-    const allowed = await backend.canEditMaterials();
-    if (!open) return;
-    if (!allowed) { setNote('업로드 현황은 강사만 볼 수 있어요.'); return; }
-    load(true);
+    // 안내를 표시하는 동안에도 닫기 버튼은 바로 사용할 수 있어야 한다.
     veil.querySelector('[data-act="close"]').focus({ preventScroll: true });
+    try {
+      const canView = await backend.canEditMaterials();
+      if (!open || id !== loadId) return;
+      if (!canView) { setNote('업로드 현황은 강사·자료 담당자만 볼 수 있어요.'); return; }
+      allowed = true;
+      veil.querySelectorAll('[data-period]').forEach(button => { button.disabled = false; });
+      load(true);
+    } catch {
+      if (open && id === loadId) setNote('권한을 확인하지 못했어요. 창을 닫고 다시 시도해 주세요.');
+    }
   }
   function close() {
     if (!open) return;
-    open = false; loadId++;
+    open = false; allowed = false; loadId++;
     veil.classList.remove('is-in');
     setTimeout(() => { if (!open) veil.hidden = true; }, 230);
     onClose?.();
+    if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
   }
 
   veil.addEventListener('click', event => {

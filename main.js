@@ -1471,7 +1471,7 @@ async function goInside(ig, projectId = null) {
       onOpen: () => { bar.hidden = true; canvas.style.cursor = ''; lighthouseRoom.setMapHovered(false); },
       onClose: () => { bar.hidden = false; }
     });
-    if (!dashboard) dashboard = (await import('./lighthouse-dashboard.js?v=dash7')).createLighthouseDashboard({
+    if (!dashboard) dashboard = (await import('./lighthouse-dashboard.js?v=close8')).createLighthouseDashboard({
       backend: villageBackend, getOwner: id => homeIgloo(Number(id)),
       // 최근 프로젝트를 누르면 등대를 나와 그 이글루의 해당 프로젝트로 바로 들어간다.
       onGoProject: (iglooId, projectId) => {
