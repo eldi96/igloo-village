@@ -112,7 +112,7 @@ export function mountCommentMailbox(backend, { onOpen, onLightChange = () => {},
           if (token !== generation) return;
           const current = mails.find(row => row.id === mail.id);
           if (current) current.read_at = read.read_at;
-          mail.read_at = read.read_at; title.textContent = label(); light();
+          mail.read_at = read.read_at; title.textContent = label(); light(); refreshLights();
           mailStatus.textContent = `${mails.length}개 · 안 읽은 메시지 ${mails.filter(row => !row.read_at).length}개`;
         } catch { if (token === generation) mailStatus.textContent = '읽음 표시를 저장하지 못했어요. 메시지를 다시 펼쳐 주세요.'; }
         finally { if (token === generation) markingMail.delete(mail.id); }
@@ -139,10 +139,15 @@ export function mountCommentMailbox(backend, { onOpen, onLightChange = () => {},
       rows = comments.value; paint();
       if (rows.some(row => !shown.has(row.id))) autoPending = true;
       rows.forEach(row => shown.add(row.id));
-      if (autoPending && home !== null && canAutoOpen()) { autoPending = false; panel.hidden = false; }
     } else status.textContent = '댓글 알림을 불러오지 못했어요. 우편함을 다시 열어 주세요.';
-    if (inbox.status === 'fulfilled') { mails = inbox.value; paintMail(); light(); }
+    if (inbox.status === 'fulfilled') {
+      mails = inbox.value; paintMail(); light();
+      // 새 미확인 메시지에만 카드를 열고, 사용자가 닫은 뒤 같은 메시지로 다시 열지 않는다.
+      if (mails.some(mail => !mail.read_at && !shown.has(`mail:${mail.id}`))) autoPending = true;
+      mails.forEach(mail => shown.add(`mail:${mail.id}`));
+    }
     else mailStatus.textContent = '메시지를 불러오지 못했어요. 우편함을 다시 열어 주세요.';
+    if (autoPending && home !== null && canAutoOpen()) { autoPending = false; panel.hidden = false; }
   }
 
   async function setAccess(member, nextHome) {

@@ -145,3 +145,5 @@ end $$;
 rollback;
 
 -- 승인 회원 간 발송·수신함 격리는 verify-member-mail.sql의 독립 롤백 시험으로 확인.
+
+-- 댓글·우편 공개 점등과 우편 내용 격리는 verify-mailbox-mail-glow.sql의 롤백 시험으로 확인.

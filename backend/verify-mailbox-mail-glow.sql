@@ -1,0 +1,32 @@
+begin;
+select set_config('glow.a',gen_random_uuid()::text,true),set_config('glow.b',gen_random_uuid()::text,true),set_config('glow.c',gen_random_uuid()::text,true);
+insert into auth.users(id,email,aud,role) select current_setting(k)::uuid,current_setting(k)||'@igloo.test','authenticated','authenticated' from unnest(array['glow.a','glow.b','glow.c']) k;
+insert into public.members(id,display_name,role,approved) select current_setting(k)::uuid,'점등 시험','student',true from unnest(array['glow.a','glow.b','glow.c']) k;
+update public.igloos set owner_id=current_setting('glow.b')::uuid,claimed_at=now() where id=30;
+select set_config('request.jwt.claims',json_build_object('sub',current_setting('glow.a'),'role','authenticated')::text,true);
+set local role authenticated;
+select public.send_mail(array[current_setting('glow.b')::uuid],'비공개 점등 시험','');
+reset role;
+set local role anon;
+do $$ begin
+if not exists(select 1 from public.get_unread_mailbox_homes() where igloo_id=30) then raise exception 'FAIL anonymous cannot see mail glow';end if;
+begin perform * from public.mail_messages;raise exception 'FAIL anonymous sees mail contents';exception when insufficient_privilege then null;end;
+end $$;
+reset role;
+select set_config('request.jwt.claims',json_build_object('sub',current_setting('glow.c'),'role','authenticated')::text,true);
+set local role authenticated;
+do $$ begin
+if not exists(select 1 from public.get_unread_mailbox_homes() where igloo_id=30) then raise exception 'FAIL observer cannot see glow';end if;
+if exists(select 1 from public.mail_messages) then raise exception 'FAIL observer sees mail';end if;
+end $$;
+reset role;
+select set_config('request.jwt.claims',json_build_object('sub',current_setting('glow.b'),'role','authenticated')::text,true);
+set local role authenticated;
+do $$ begin if (select count(*) from public.mail_messages)<>1 then raise exception 'FAIL receiver inbox';end if;end $$;
+update public.mail_messages set read_at=now() where recipient_id=auth.uid();
+reset role;
+set local role anon;
+do $$ begin if exists(select 1 from public.get_unread_mailbox_homes() where igloo_id=30) then raise exception 'FAIL glow remains after read';end if;end $$;
+reset role;
+rollback;
+select 'PASS: 우편 점등 익명·다른 회원 공개, 본문 비공개, 읽음 후 소등, 전체 롤백' as result;
