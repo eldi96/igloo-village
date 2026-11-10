@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createBearNavigation } from './bear-navigation.js';
 
-export async function addSanta(scene,{fireSpot,heightAt,height,obstacles,bearPosition}) {
+export async function addSanta(scene,{fireSpot,lakesideHome,heightAt,height,obstacles,bearPosition}) {
   if (!fireSpot) return;
   const {scene:model,animations}=await new GLTFLoader().loadAsync(new URL('./assets/SantaGirl.glb?v=idle15-v1',import.meta.url).href);
   model.updateMatrixWorld(true);
@@ -11,7 +11,7 @@ export async function addSanta(scene,{fireSpot,heightAt,height,obstacles,bearPos
     for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
       material.roughnessMap = null; material.roughness = .94;
       material.emissiveMap = material.map; material.emissive.setHex(0xffffff); material.emissiveIntensity = .11;
-      material.metalness = 0;
+      material.metalnessMap = null; material.metalness = 0;
       if (material.normalScale) material.normalScale.multiplyScalar(.35);
       if (material.map) {
         material.map.magFilter = THREE.LinearFilter;
@@ -37,7 +37,7 @@ export async function addSanta(scene,{fireSpot,heightAt,height,obstacles,bearPos
     const waist=bones[hips].getWorldPosition(new THREE.Vector3()), p=new THREE.Vector3();
     const {skinIndex:ids,skinWeight:ws}=mesh.geometry.attributes;
     for(let i=0;i<ws.count;i++){
-      mesh.localToWorld(mesh.getVertexPosition(i,p));
+      mesh.getVertexPosition(i,p).applyMatrix4(mesh.matrixWorld);
       const blend=.87*(1-THREE.MathUtils.smoothstep(Math.abs(p.y-waist.y)/size.y,.025,.105));
       if(!blend)continue;
       const weights=new Map();let arm=0;
@@ -52,37 +52,102 @@ export async function addSanta(scene,{fireSpot,heightAt,height,obstacles,bearPos
   });
   const mixer=new THREE.AnimationMixer(model);
   for(const clip of animations.filter(clip => clip.name !== 'Idle_15'))for(const t of clip.tracks)if(/Hips\.position$/i.test(t.name))for(let i=3;i<t.values.length;i+=3){t.values[i]=t.values[0];t.values[i+2]=t.values[2];}
-  const walk=mixer.clipAction(THREE.AnimationClip.findByName(animations,'Walking')),run=mixer.clipAction(THREE.AnimationClip.findByName(animations,'Running'));
-  walk.play();run.play();run.setEffectiveWeight(0);
-  const idle = mixer.clipAction(THREE.AnimationClip.findByName(animations,'Idle_15'));
-  idle.play(); idle.setEffectiveWeight(1); walk.setEffectiveWeight(0);
+  const fallClip=THREE.AnimationClip.parse(await new THREE.FileLoader().setResponseType('json').loadAsync(new URL('./assets/santa-fall.json',import.meta.url).href));
+  const fall=mixer.clipAction(fallClip);
+  fall.setLoop(THREE.LoopOnce,1); fall.clampWhenFinished=true;
+  const walk=mixer.clipAction(THREE.AnimationClip.findByName(animations,'Walking'));
+  const idle=mixer.clipAction(THREE.AnimationClip.findByName(animations,'Idle_15'));
+  idle.play(); walk.play().setEffectiveWeight(0);
   const root=new THREE.Group();root.name='village-santa';root.scale.setScalar(height/size.y);
   model.position.add(new THREE.Vector3(-center.x,-box.min.y,-center.z));root.add(model);
-  const f=fireSpot,nav=createBearNavigation({obstacles,heightAt,radius:.48,step:.45,bounds:{minX:f.x-8,maxX:f.x+8,minZ:f.z-8,maxZ:f.z+8}});
-  const stops=Array.from({length:16},(_,i)=>nav.nearestPoint({x:f.x+4.3*Math.cos(i*Math.PI/8),z:f.z+4.3*Math.sin(i*Math.PI/8)})).filter(Boolean);
+  const f=fireSpot;
+  const targets=Array.from({length:8},(_,i)=>{
+    const angle=i*Math.PI/4, radius=5.25+.55*Math.sin(2*angle);
+    return {x:f.x+radius*Math.cos(angle),z:f.z+radius*Math.sin(angle)};
+  });
+  if(lakesideHome){
+    const home=lakesideHome;
+    const approach=Math.atan2(f.z-home.z,f.x-home.x);
+    const loop=Array.from({length:8},(_,i)=>{
+      const angle=approach+i*Math.PI/4;
+      const radius=home.radius+3;
+      return {x:home.x+radius*Math.cos(angle),z:home.z+radius*Math.sin(angle)};
+    });
+    targets.splice(5,0,...loop,loop[0]);
+  }
+  const xs=targets.map(p=>p.x), zs=targets.map(p=>p.z);
+  const bounds={minX:Math.min(...xs)-3,maxX:Math.max(...xs)+3,
+    minZ:Math.min(...zs)-3,maxZ:Math.max(...zs)+3};
+  const localObstacles=obstacles.filter(o =>
+    o.x+o.r+1>=bounds.minX && o.x-o.r-1<=bounds.maxX &&
+    o.z+o.r+1>=bounds.minZ && o.z-o.r-1<=bounds.maxZ);
+  const nav=createBearNavigation({obstacles:localObstacles,heightAt,radius:.48,step:.45,bounds});
+  const stops=targets.map(p=>nav.nearestPoint(p)).filter(Boolean);
+  const routes=new Map();
   if(!stops.length)return;
-  let pos={...stops[0]},index=0,path=[],pause=.6,alarm=0,cooldown=0,speed=0,weight=0,moving=0;
+  let pos={...stops[0]},index=0,path=[],pause=.6,reaction=-1,armed=true,speed=0,moving=0;
+  let turnFrom=0, turnDuration=0, turnAngle=0;
   root.position.set(pos.x,heightAt(pos.x,pos.z),pos.z);scene.add(root);
   return {update(dt){
-    dt=Math.min(dt,.08);cooldown-=dt;alarm-=dt;pause-=dt;
-    const b=bearPosition(),dist=q=>Math.hypot(q.x-b.x,q.z-b.z);
-    if(b&&dist(pos)<3.6&&cooldown<=0){
-      const choices=stops.slice().sort((a,c)=>dist(c)-dist(a));
-      for(const goal of choices){const escape=nav.findPath(pos,goal).slice(1);if(escape.length&&dist(escape[0])>dist(pos)){path=escape;alarm=3.3;pause=.22;cooldown=5;break;}}
+    dt=Math.min(dt,.08);
+    const b=bearPosition(),distance=b?Math.hypot(pos.x-b.x,pos.z-b.z):Infinity;
+    if(reaction<0 && distance>5.5)armed=true;
+    if(reaction<0 && armed && distance<3.6){
+      armed=false;reaction=0;speed=0;
+      turnFrom=root.rotation.y;
+      const bearing=distance>.001 ? Math.atan2(b.x-pos.x,b.z-pos.z) : turnFrom;
+      turnAngle=Math.atan2(Math.sin(bearing-turnFrom),Math.cos(bearing-turnFrom));
+      turnDuration=.12+.45*Math.abs(turnAngle)/Math.PI;
+      fall.reset().play();fall.paused=true;
     }
-    if(!path.length&&pause<=0){index=(index+2)%stops.length;path=nav.findPath(pos,stops[index]).slice(1);if(!path.length)pause=.25;}
-    const fleeing=alarm>0;
-    speed=THREE.MathUtils.damp(speed,path.length&&pause<=0?(fleeing?2.5:.83):0,8,dt);
-    if(path.length&&pause<=0){const q=path[0],x=q.x-pos.x,z=q.z-pos.z,d=Math.hypot(x,z),step=Math.min(d,speed*dt);
-      if(d>.0001){pos.x+=x/d*step;pos.z+=z/d*step;const delta=Math.atan2(x,z)-root.rotation.y;root.rotation.y+=Math.atan2(Math.sin(delta),Math.cos(delta))*Math.min(1,dt*10);}
-      if(d<=step+.0001){path.shift();if(!path.length)pause=1.3+Math.random()*1.6;}
+    if(reaction>=0){
+      reaction+=dt;
+      const turn=THREE.MathUtils.smoothstep(reaction,0,turnDuration);
+      root.rotation.y=turnFrom+turnAngle*turn;
+      const fallTime=Math.max(0,reaction-turnDuration);
+      const down=fallClip.duration, riseStart=down+.85, riseDuration=2.8;
+      const rise=THREE.MathUtils.smoothstep(fallTime,riseStart,riseStart+riseDuration);
+      fall.time=Math.min(fallTime,down)*(1-rise);
+      const w=THREE.MathUtils.smoothstep(fallTime,0,.22)*(1-THREE.MathUtils.smoothstep(rise,.78,1));
+      fall.setEffectiveWeight(w);
+      moving*=Math.exp(-8*dt);
+      walk.setEffectiveWeight((1-w)*moving); idle.setEffectiveWeight((1-w)*(1-moving));
+      mixer.update(dt);
+      if(rise===1){fall.stop();reaction=-1;pause=.25;moving=0;}
+      return;
     }
-    root.position.set(pos.x,heightAt(pos.x,pos.z)+(alarm>3.08?.12*Math.sin(Math.PI*(3.3-alarm)/.22):0),pos.z);
+    pause-=dt;
+    if(!path.length && pause<=0){
+      const next=(index+1)%stops.length;
+      const key=pos.x+","+pos.z+":"+next;
+      let leg=routes.get(key);
+      if(!leg){
+        leg=nav.findPath(pos,stops[next]).slice(1);
+        if(leg.length)routes.set(key,leg);
+      }
+      path=leg.slice();
+      index=next;
+      if(!path.length)pause=.25;
+    }
+    let targetSpeed=0;
+    if(path.length && pause<=0){
+      const q=path[0], x=q.x-pos.x, z=q.z-pos.z, d=Math.hypot(x,z);
+      const delta=Math.atan2(x,z)-root.rotation.y;
+      const turn=Math.atan2(Math.sin(delta),Math.cos(delta));
+      if(d>.0001)root.rotation.y+=turn*(1-Math.exp(-8*dt));
+      const braking=path.length===1 ? Math.min(1,Math.sqrt(d/.55)) : 1;
+      targetSpeed=.83*braking*(.55+.45*Math.max(0,Math.cos(turn)));
+      speed=THREE.MathUtils.damp(speed,targetSpeed,7,dt);
+      const step=Math.min(d,speed*dt);
+      if(d>.0001){pos.x+=x/d*step;pos.z+=z/d*step;}
+      if(d<=step+.0001){pos.x=q.x;pos.z=q.z;path.shift();if(!path.length)pause=1.3+Math.random()*1.6;}
+    }else{
+      speed=THREE.MathUtils.damp(speed,0,8,dt);
+    }
+    root.position.set(pos.x,heightAt(pos.x,pos.z),pos.z);
     moving=THREE.MathUtils.damp(moving,path.length&&pause<=0?1:0,9,dt);
-    weight=THREE.MathUtils.damp(weight,fleeing?1:0,9,dt);
-    idle.setEffectiveWeight(1-moving);run.setEffectiveWeight(weight*moving);walk.setEffectiveWeight((1-weight)*moving);
-    const gaitRate=Math.min(1.3,speed/(fleeing?2.5:.83));
-    walk.setEffectiveTimeScale(gaitRate);run.setEffectiveTimeScale(gaitRate);
+    idle.setEffectiveWeight(1-moving);walk.setEffectiveWeight(moving);
+    walk.setEffectiveTimeScale(Math.min(1.3,speed/.83));
     mixer.update(dt);
   }};
 }
