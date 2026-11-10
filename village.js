@@ -732,6 +732,8 @@ export function addVillage(scene, ctx) {
 
   const fireSpot = pinnedFire ? (occupied.push({ x: pinnedFire.x, z: pinnedFire.z, r: 1.4 }), { x: pinnedFire.x, z: pinnedFire.z })
     : findSpot(1.4, 6.3, 9.5) || findSpot(1.4, 7, 28);
+  const wavingSantaSpot = fireSpot && { x: fireSpot.x + 2.35, z: fireSpot.z + 0.2, r: 1.25 };
+  if (wavingSantaSpot) occupied.push(wavingSantaSpot);
   let fireLight = null;
   if (fireSpot) {
     const { x, z } = fireSpot, y = heightAt(x, z);
@@ -909,6 +911,7 @@ export function addVillage(scene, ctx) {
   return {
     fireSpot,
     boardSpot,
+    wavingSantaSpot,
     walkingObstacles: [
       ...occupied.map(o => ({ ...o })),
       { x: hub.x, z: hub.z, r: 5.1 },

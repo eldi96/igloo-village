@@ -903,10 +903,11 @@ function fitRipples(ig) {
 // 마을 소품은 별도 파일. 없어도 장면은 그대로 뜬다
 let village = null;
 let santa = null;
+let updateWavingSanta = null;
 // 주인이 있는 이글루 번호. 마을 모듈이 늦게 불러와져도 우편함을 맞게 세운다.
 let ownedHomeIds = [];
 let polarBear = null;
-import('./village.js?v=lake-depth-fix2')
+import('./village.js?v=wave-grandpa1')
   .then(m => {
     // 모닥불은 관측소를 옮기기 전 자리(도로 오른쪽)에 고정한다. 난수 배치에 맡기면 다른 건물을 옮길 때마다 산타·게시판까지 함께 움직인다.
     village = m.addVillage(scene, { places, hub: HUB, heightAt, rng, lighthouse: LIGHTHOUSE, statsSite: STATS_SITE, fireSpot: { x: 5.4, z: 12.01 } });
@@ -916,6 +917,12 @@ import('./village.js?v=lake-depth-fix2')
     // 게시판은 모닥불 바로 왼쪽(화면 기준)에 둔다. 모닥불 자리가 없으면 예전 벤치 자리.
     const signSpot = village.fireSpot ? { x: village.fireSpot.x - 2.1, z: village.fireSpot.z + 0.2 } : village.boardSpot;
     if (signSpot) boardObject.place(signSpot.x, signSpot.z, Math.PI / 14);
+    if (village.wavingSantaSpot) {
+      import('./waving-santa.js?v=coat1')
+        .then(({ addWavingSanta }) => addWavingSanta(scene, village.wavingSantaSpot, heightAt, camera))
+        .then(update => { updateWavingSanta = update; })
+        .catch(error => console.warn('인사하는 산타를 불러오지 못했어요', error));
+    }
     import('./polar-bear.js?v=pet2')
       .then(({ addPolarBear }) => addPolarBear(scene, { obstacles: village.walkingObstacles, heightAt }))
       .then(bear => { polarBear = bear; })
@@ -1583,6 +1590,7 @@ function frame() {
   mountainTitle.material.opacity = titleOpacity;
   mountainTitle.visible = titleOpacity > 0.01;
   if (village) village.update(t, camera, H());
+  if (updateWavingSanta) updateWavingSanta(dt);
   if (santa) santa.update(dt);
   if (polarBear) polarBear.update(dt);
 
