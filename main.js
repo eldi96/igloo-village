@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { villageBackend } from './backend/client.js?v=member-mail1';
 import { mountAuth } from './auth-ui.js';
 import { mountChat } from './chat-ui.js';
-import { mountCommentMailbox } from './comment-mailbox.js?v=received-mail1';
+import { mountCommentMailbox } from './comment-mailbox.js?v=public-mail2';
 import { createQualityControl } from './quality.js';
 import { addStatsBuilding } from './stats-building.js?v=hut4';
 import { mountAnonymousBoard } from './anonymous-board.js?v=note1';
