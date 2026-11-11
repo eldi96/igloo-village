@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { addMailboxes } from './mailboxes.js?v=rise3';
 
 export function addVillage(scene, ctx) {
@@ -283,7 +284,6 @@ export function addVillage(scene, ctx) {
   for (let i = 0; i < vertices.count; i++) {
     const vx = vertices.getX(i), vz = vertices.getZ(i);
     let y = heightAt(vx, vz) + 0.14;
-    // 호수 안쪽에 솟아오르는 눈밭 지형을 바닥 아래로 완전히 가라앉힘
     const inPond = Math.hypot((vx - hub.x) / 4.2, (vz - hub.z) / 3.2);
     if (inPond < 1.0) {
       y = -0.6;
@@ -334,10 +334,10 @@ export function addVillage(scene, ctx) {
     }
   }
 
-  // 🌊 [1. 어두운 심해 착시 바닥 + 에메랄드 수면]
+  // 🌊 [어두운 심해 착시 바닥 + 에메랄드 수면]
   const lakeCenterY = heightAt(hub.x, hub.z) + 0.32;
   const pondVerts = [0, lakeCenterY, 0];
-  const basinVerts = [0, lakeCenterY - 0.25, 0]; // 웅덩이 중심을 살짝 올려 흰 바닥 완벽 차단
+  const basinVerts = [0, lakeCenterY - 0.25, 0];
   const pondIndices = [];
   const ringCount = 72;
 
@@ -347,7 +347,7 @@ export function addVillage(scene, ctx) {
     const lx = Math.cos(a) * 3.88 * wobble;
     const lz = Math.sin(a) * 2.88 * wobble;
     pondVerts.push(lx, lakeCenterY, lz);
-    basinVerts.push(lx, lakeCenterY - 0.08, lz); // 호수 테두리 전체 면적을 빈틈없이 덮음
+    basinVerts.push(lx, lakeCenterY - 0.08, lz);
 
     const wx = hub.x + Math.cos(a) * 4 * wobble;
     const wz = hub.z + Math.sin(a) * 3 * wobble;
@@ -357,36 +357,18 @@ export function addVillage(scene, ctx) {
     pondIndices.push(0, next, i + 1);
   }
 
-  // 흰 눈밭을 완벽히 차단하고 수심 깊이감을 주는 바닥 메쉬
   const basinGeo = new THREE.BufferGeometry();
   basinGeo.setAttribute('position', new THREE.Float32BufferAttribute(basinVerts, 3));
   basinGeo.setIndex(pondIndices);
   basinGeo.computeVertexNormals();
   const basinMesh = new THREE.Mesh(basinGeo, new THREE.MeshStandardMaterial({
-    color: 0x0d384c, // 너무 캄캄하지 않고 차분한 딥 틸(청록) 톤
-    roughness: 0.88,
-    metalness: 0.08
+    color: 0x1d5d7a,  // 기존의 어두운 청록(0x0d384c)에서 밝고 푸른 빙하 바닥 톤으로 변경
+    roughness: 0.8,
+    metalness: 0.05
   }));
   basinMesh.position.set(hub.x, 0, hub.z);
-  basinMesh.renderOrder = 2; // 바닥 눈밭보다 위에 렌더링
+  basinMesh.renderOrder = 2;
   root.add(basinMesh);
-
-  for (let i = 0; i < ringCount; i++) {
-    const a = (i / ringCount) * TAU;
-    const wobble = 1 + 0.07 * Math.sin(a * 3 + 0.8) + 0.035 * Math.sin(a * 7);
-    const lx = Math.cos(a) * 3.88 * wobble;
-    const lz = Math.sin(a) * 2.88 * wobble;
-    pondVerts.push(lx, lakeCenterY, lz);
-    basinVerts.push(lx * 0.95, lakeCenterY - 0.05, lz * 0.95);
-
-    const wx = hub.x + Math.cos(a) * 4 * wobble;
-    const wz = hub.z + Math.sin(a) * 3 * wobble;
-    instance(sphere, snow, wx, lakeCenterY + 0.02, wz, 0.43, 0.22, 0.32, a);
-
-    const next = ((i + 1) % ringCount) + 1;
-    pondIndices.push(0, next, i + 1);
-  }
-
 
   const lakeGeo = new THREE.BufferGeometry();
   lakeGeo.setAttribute('position', new THREE.Float32BufferAttribute(pondVerts, 3));
@@ -398,11 +380,11 @@ export function addVillage(scene, ctx) {
   for (let i = 0; i < lakePosAttr.count; i++) baseWaterY[i] = lakePosAttr.getY(i);
 
   const lakeMat = new THREE.MeshStandardMaterial({
-    color: 0x1681a3,
-    roughness: 0.08,
-    metalness: 0.25,
+    color: 0x38bdf8,  // 맑고 화사한 스카이 블루 톤
+    roughness: 0.05,
+    metalness: 0.2,
     transparent: true,
-    opacity: 0.68,
+    opacity: 0.45,    // 기존 0.68에서 0.45로 낮춰 속이 시원하게 비치도록 투명도 증가
     depthWrite: false
   });
 
@@ -412,7 +394,7 @@ export function addVillage(scene, ctx) {
   lakeMesh.receiveShadow = true;
   root.add(lakeMesh);
 
-  // 🎣 [2. 감성적인 호숫가 원목 낚시 데크 & 장비 세트]
+  // 🎣 [호숫가 원목 낚시 데크 & 장비 세트]
   const dockGroup = new THREE.Group();
   const deckX = hub.x - 3.25;
   const deckZ = hub.z - 0.85;
@@ -546,125 +528,18 @@ export function addVillage(scene, ctx) {
   bobber.add(bBot);
   root.add(bobber);
 
-  // 🐟 [3. 고급 유선형 비단잉어/송어 3D 디테일 모델링]
+// 🐟 [GLB 5종 물고기 로드 & 수영 애니메이션 자동 탐색]
   const fishes = [];
-  const fishPalette = [
-    { main: 0xff3b14, belly: 0xffffff, fin: 0xff7043 }, // 홍백 비단잉어
-    { main: 0xff9900, belly: 0xfff0b3, fin: 0xffb84d }, // 황금 잉어
-    { main: 0xd82b2b, belly: 0xffffff, fin: 0xef5350 }, // 루비 트라우트
-    { main: 0x00bcd4, belly: 0xe0f7fa, fin: 0x4dd0e1 }, // 빙하 터콰이즈
-    { main: 0xe6a100, belly: 0xfff8e1, fin: 0xffca28 }  // 토파즈 잉어
+  const gltfLoader = new GLTFLoader();
+
+  // 크기를 호수 비율에 맞게 대폭 축소 (0.06 ~ 0.08)
+  const fishConfigs = [
+    { file: 'Goldfish.glb', scale: 0.12 },
+    { file: 'Koi.glb', scale: 0.14 },
+    { file: 'Parrot Fish.glb', scale: 0.14 },
+    { file: 'Red Snapper.glb', scale: 0.13 },
+    { file: 'Tetra.glb', scale: 0.14 }
   ];
-
-  function createDetailedFish(theme) {
-    const fish = new THREE.Group();
-    const bodyMat = new THREE.MeshStandardMaterial({
-      color: theme.main,
-      roughness: 0.18,
-      metalness: 0.15,
-      emissive: new THREE.Color(theme.main).multiplyScalar(0.95)
-    });
-    const bellyMat = new THREE.MeshStandardMaterial({ color: theme.belly, roughness: 0.22 });
-    const finMat = new THREE.MeshStandardMaterial({
-      color: theme.fin,
-      roughness: 0.15,
-      transparent: true,
-      opacity: 0.85,
-      side: THREE.DoubleSide
-    });
-    const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
-    const eyePupilMat = new THREE.MeshBasicMaterial({ color: 0x0a0a0a });
-
-    // 유선형 등 몸통
-    const upperGeo = new THREE.SphereGeometry(0.12, 14, 10);
-    upperGeo.scale(1.5, 0.95, 0.52);
-    const upperBody = new THREE.Mesh(upperGeo, bodyMat);
-    upperBody.position.set(0, 0.015, 0.06);
-    fish.add(upperBody);
-
-    // 밝은 배 부분 (언더벨리)
-    const bellyGeo = new THREE.SphereGeometry(0.11, 12, 8);
-    bellyGeo.scale(1.42, 0.65, 0.48);
-    const bellyMesh = new THREE.Mesh(bellyGeo, bellyMat);
-    bellyMesh.position.set(0, -0.035, 0.05);
-    fish.add(bellyMesh);
-
-    // 정교한 눈 (흰자 + 동공)
-    [-0.072, 0.072].forEach(side => {
-      const eyeWhite = new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 8), eyeWhiteMat);
-      eyeWhite.position.set(side, 0.028, 0.135);
-      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.013, 6, 6), eyePupilMat);
-      pupil.position.set(side * 1.15, 0.028, 0.155);
-      fish.add(eyeWhite);
-      fish.add(pupil);
-    });
-
-    // 곡선형 등지느러미
-    const dorsalShape = new THREE.BufferGeometry();
-    dorsalShape.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
-      0, 0.09, 0.1,
-      0, 0.22, -0.06,
-      0, 0.14, -0.16,
-      0, 0.06, -0.14
-    ]), 3));
-    dorsalShape.setIndex([0, 1, 2, 0, 2, 3]);
-    dorsalShape.computeVertexNormals();
-    fish.add(new THREE.Mesh(dorsalShape, finMat));
-
-    // 펄럭이는 가슴지느러미
-    const pectoralFins = [];
-    [-1, 1].forEach(side => {
-      const finPivot = new THREE.Group();
-      finPivot.position.set(side * 0.065, -0.02, 0.07);
-      const finGeo = new THREE.BufferGeometry();
-      finGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
-        0, 0, 0,
-        side * 0.13, 0.02, -0.12,
-        side * 0.15, -0.04, -0.16,
-        side * 0.04, -0.05, -0.08
-      ]), 3));
-      finGeo.setIndex([0, 1, 2, 0, 2, 3]);
-      finGeo.computeVertexNormals();
-      const finPart = new THREE.Mesh(finGeo, finMat);
-      finPivot.add(finPart);
-      fish.add(finPivot);
-      pectoralFins.push({ pivot: finPivot, side });
-    });
-
-    // 뒷몸통 관절
-    const spineJoint = new THREE.Group();
-    spineJoint.position.set(0, 0, -0.08);
-    fish.add(spineJoint);
-
-    const aftBodyGeo = new THREE.ConeGeometry(0.095, 0.28, 10);
-    aftBodyGeo.rotateX(-Math.PI / 2);
-    aftBodyGeo.scale(0.5, 0.95, 1.0);
-    const aftBody = new THREE.Mesh(aftBodyGeo, bodyMat);
-    aftBody.position.set(0, 0, -0.13);
-    spineJoint.add(aftBody);
-
-    // 부채꼴 꼬리지느러미
-    const tailPivot = new THREE.Group();
-    tailPivot.position.set(0, 0, -0.26);
-    spineJoint.add(tailPivot);
-
-    const tailShape = new THREE.BufferGeometry();
-    tailShape.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
-      0, 0, 0,
-      0, 0.16, -0.19,
-      0, 0.06, -0.16,
-      0, -0.06, -0.16,
-      0, -0.16, -0.19
-    ]), 3));
-    tailShape.setIndex([0, 1, 2, 0, 2, 3, 0, 3, 4]);
-    tailShape.computeVertexNormals();
-    const tailMesh = new THREE.Mesh(tailShape, finMat);
-    tailPivot.add(tailMesh);
-
-    fish.scale.set(1.1, 1.1, 1.1);
-    fish.traverse(child => { if (child.isMesh) child.renderOrder = 3; });
-    return { fish, spineJoint, tailPivot, pectoralFins };
-  }
 
   function getLakeNormalizedDist(x, z) {
     const dx = x - hub.x;
@@ -689,39 +564,75 @@ export function addVillage(scene, ctx) {
     return { x: hub.x, z: hub.z };
   }
 
-  // 🐟 물고기 5마리 생성
-  for (let i = 0; i < 5; i++) {
-    const { fish, spineJoint, tailPivot, pectoralFins } = createDetailedFish(fishPalette[i % fishPalette.length]);
-    root.add(fish);
+  fishConfigs.forEach((cfg, i) => {
+    gltfLoader.load(`./assets/${cfg.file}`, gltf => {
+      const model = gltf.scene;
+      model.scale.set(cfg.scale, cfg.scale, cfg.scale);
 
-    const startPt = getRandomLakePoint();
-    const targetPt = getRandomLakePoint();
-    const initYaw = Math.atan2(targetPt.x - startPt.x, targetPt.z - startPt.z);
-    const swimDepth = lakeCenterY - 0.12 - (i * 0.015);
+      model.traverse(child => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+          child.renderOrder = 3;
+          if (child.material) {
+            child.material.roughness = 0.2;
+            child.material.metalness = 0.1;
+            // 물속에서 묻히지 않도록 자기 색으로 살짝 밝힘
+            if (child.material.color) {
+              child.material.emissive = child.material.color;
+              child.material.emissiveIntensity = 0.25;
+            }
+          }
+        }
+      });
 
-    fishes.push({
-      group: fish,
-      spineJoint,
-      tailPivot,
-      pectoralFins,
-      x: startPt.x,
-      z: startPt.z,
-      y: swimDepth,
-      baseDepth: swimDepth,
-      targetDepth: swimDepth,
-      targetX: targetPt.x,
-      targetZ: targetPt.z,
-      yaw: initYaw,
-      targetYaw: initYaw,
-      pitch: 0,
-      roll: 0,
-      speed: 0,
-      maxSpeed: rand(0.015, 0.022),
-      isHovering: false,
-      pauseTimer: rand(1.0, 2.5),
-      swimPhase: rand(0, TAU)
+      // 'Swim' 또는 'Idle' 애니메이션 클립을 우선 찾아 재생
+      let mixer = null;
+      if (gltf.animations && gltf.animations.length > 0) {
+        mixer = new THREE.AnimationMixer(model);
+
+        // 애니메이션 클립 이름 로그 확인 및 Swim 모션 탐색
+        const swimClip = gltf.animations.find(clip => 
+          /swim|walk|run|idle/i.test(clip.name) && !/death|die|dead/i.test(clip.name)
+        ) || (gltf.animations.length > 1 ? gltf.animations[1] : gltf.animations[0]);
+
+        const action = mixer.clipAction(swimClip);
+        action.timeScale = 1.0 + rand(-0.2, 0.2);
+        action.play();
+      }
+
+      root.add(model);
+
+      const startPt = getRandomLakePoint();
+      const targetPt = getRandomLakePoint();
+      const initYaw = Math.atan2(targetPt.x - startPt.x, targetPt.z - startPt.z);
+      // 수면 아래로 충분히 잠기도록 수심 조정
+      const swimDepth = lakeCenterY - 0.06 - (i * 0.012);
+
+      fishes.push({
+        group: model,
+        mixer,
+        x: startPt.x,
+        z: startPt.z,
+        y: swimDepth,
+        baseDepth: swimDepth,
+        targetDepth: swimDepth,
+        targetX: targetPt.x,
+        targetZ: targetPt.z,
+        yaw: initYaw,
+        targetYaw: initYaw,
+        pitch: 0,
+        roll: 0,
+        speed: 0,
+        maxSpeed: rand(0.012, 0.018),
+        isHovering: false,
+        pauseTimer: rand(1.0, 2.5),
+        swimPhase: rand(0, TAU)
+      });
+    }, undefined, err => {
+      console.warn(`물고기 로드 실패 (${cfg.file}):`, err.message);
     });
-  }
+  });
 
   function findSpot(radius, min = 7, max = 22) {
     for (let i = 0; i < 1600; i++) { const a = rand(0, TAU), d = rand(min, max), x = hub.x + Math.cos(a) * d, z = hub.z + Math.sin(a) * d; if (available(x, z, radius)) { occupied.push({ x, z, r: radius }); return { x, z }; } }
@@ -967,10 +878,14 @@ export function addVillage(scene, ctx) {
 
       bobber.position.y = lakeCenterY + 0.018 + Math.sin(timeSeconds * 2.6 + 0.5) * 0.012;
 
-      // 🐟 자연스러운 물고기 자율 유영 AI
+      // 🐟 자연스러운 물고기 자율 유영 AI & GLB 애니메이션 갱신
       for (let i = 0; i < fishes.length; i++) {
         const f = fishes[i];
         const dt = 0.016;
+
+        if (f.mixer) {
+          f.mixer.update(dt);
+        }
 
         if (f.pauseTimer > 0) {
           f.pauseTimer -= dt;
@@ -989,7 +904,7 @@ export function addVillage(scene, ctx) {
             f.targetX = next.x;
             f.targetZ = next.z;
             f.targetDepth = f.baseDepth + rand(-0.015, 0.015);
-            f.maxSpeed = rand(0.015, 0.022);
+            f.maxSpeed = rand(0.014, 0.02);
             if (rng() < 0.3) f.pauseTimer = rand(1.5, 3.2);
           }
 
@@ -1021,20 +936,6 @@ export function addVillage(scene, ctx) {
 
         f.group.position.set(f.x, f.y, f.z);
         f.group.rotation.set(f.pitch, f.yaw, f.roll);
-
-        const freq = f.isHovering ? 3.5 : 8.5;
-        f.swimPhase += dt * freq;
-
-        const tailAmp = f.isHovering ? 0.18 : 0.46;
-        f.spineJoint.rotation.y = Math.sin(f.swimPhase) * (tailAmp * 0.45);
-        f.tailPivot.rotation.y = Math.sin(f.swimPhase - 0.7) * tailAmp;
-
-        const finAmp = f.isHovering ? 0.42 : 0.22;
-        const finFreq = f.isHovering ? 5.0 : 8.5;
-        for (const pf of f.pectoralFins) {
-          pf.pivot.rotation.y = Math.sin(timeSeconds * finFreq + pf.side) * finAmp;
-          pf.pivot.rotation.x = Math.cos(timeSeconds * finFreq + pf.side) * 0.15;
-        }
       }
     }
   };
