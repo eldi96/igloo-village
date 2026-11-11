@@ -7,12 +7,18 @@ export function mountProjectFeedback(root, backend, { onViewed = () => {}, onRea
   const input = form.elements.comment;
   const submit = form.querySelector('button');
   const buttons = [...root.querySelectorAll('[data-emoji]')];
+  const resetButton = document.createElement('button');
+  resetButton.type = 'button'; resetButton.className = 'feedback-reaction-reset'; resetButton.hidden = true;
+  root.querySelector('.feedback-reactions').append(resetButton);
   let filledFor = null, projectId = null, generation = 0, userId = null, reactions = [], busy = false, reactionBusy = new Set(), loading = false;
   function controls() {
     input.disabled = submit.disabled = !userId || busy || loading;
     list.querySelectorAll('button, textarea').forEach(control => { control.disabled = !userId || busy || loading; });
     buttons.forEach(button => { button.disabled = !userId || busy || loading;
       button.setAttribute('aria-busy', String(reactionBusy.has(button.dataset.emoji))); });
+    resetButton.hidden = !userId || (!isOwner() && !reactions.some(row => row.member_id === userId));
+    resetButton.textContent = isOwner() ? '모두 지우기' : '회수';
+    resetButton.disabled = busy || loading || reactionBusy.size > 0;
   }
   // 한국 날짜 기준 오늘 내가 누른 반응(날짜 칸이 없던 옛 기록은 오늘로 본다)
   const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date());
@@ -177,7 +183,23 @@ export function mountProjectFeedback(root, backend, { onViewed = () => {}, onRea
       onLoaded(reactions.filter(row => svgOf[row.emoji]).map(row => ({ svg: svgOf[row.emoji], x: row.drop_x })));
     }
     if (includeComments) paintComments(result.comments);
+    controls();
   }
+  resetButton.addEventListener('click', async () => {
+    if (!projectId || !userId || busy || loading || reactionBusy.size) return;
+    const owner = isOwner(), id = projectId, token = generation;
+    if (owner && !window.confirm('이 프로젝트에 쌓인 리액션을 모두 지울까요?')) return;
+    busy = true; controls(); status.textContent = '';
+    try {
+      if (owner) await backend.clearProjectReactions(id);
+      else await backend.recallProjectReactions(id);
+      if (token !== generation) return;
+      filledFor = null;
+      await refresh(id, token, false);
+      if (token === generation) status.textContent = owner ? '리액션을 모두 지웠어요.' : '내 리액션을 회수했어요.';
+    } catch (error) { if (token === generation) status.textContent = message(error); }
+    finally { if (token === generation) { busy = false; controls(); } }
+  });
   form.addEventListener('submit', async event => {
     event.preventDefault();
     const body = input.value.trim();

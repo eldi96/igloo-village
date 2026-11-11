@@ -1,5 +1,5 @@
 import { normalizeExperiment, visitNumber } from './visit-data.js';
-import { mountExperimentView } from './visit-experiment-view.js?v=clear2';
+import { mountExperimentView } from './visit-experiment-view.js?v=legible1';
 
 export function createVisitDashboard(backend, { getMember, onExit }) {
   const style = document.createElement('style');
@@ -311,6 +311,36 @@ export function createVisitDashboard(backend, { getMember, onExit }) {
       .obs-top p:last-child,.obs-side-note,.obs-gauge-caption,[data-section=detail] .obs-chart-head>div { display:none; }
       .obs-bars-host { height:52px; } .experiment-average small { display:none; }
     }
+    /* 사용자가 늘어도 글자를 압축하지 않고 영역 안에서 스크롤한다. */
+    .obs-table table { width:100%; table-layout:fixed; }
+    .obs-table th,.obs-table td { width:48px; padding:8px 6px; }
+    .obs-table th:first-child,.obs-table td:first-child { width:140px; padding-left:16px; }
+    .obs-table .obs-member-key { display:inline-grid; place-items:center; width:28px; height:28px; min-height:28px; padding:0; border:0; border-radius:50%; background:transparent; }
+    .obs-member-key i { display:block; width:11px; height:11px; border-radius:50%; box-shadow:0 0 0 2px rgba(255,255,255,.12); }
+    .obs-table .obs-member-key:hover { background:rgba(255,255,255,.08); }
+    [data-panel=table] { position:relative; min-width:0; overflow:hidden; }
+    .obs-heat-host { min-height:0; overflow:auto; display:block; padding-bottom:8px; }
+    .obs-heat { height:auto; min-width:calc(144px + var(--cols)*26px); grid-template-columns:140px repeat(var(--cols),minmax(22px,1fr)); grid-template-rows:24px; grid-auto-rows:28px; gap:4px; align-content:start; }
+    .heat-name { min-width:0; line-height:20px; padding-right:12px; }
+    .heat-split { min-height:28px; overflow:hidden; }
+    .ratio-annotations { display:flex; flex:none; flex-wrap:wrap; align-items:center; gap:8px 16px; padding:4px 0 12px; font-size:11px; line-height:1.6; color:var(--muted); }
+    .ratio-average-key { display:inline-flex; align-items:center; gap:6px; }
+    .ratio-average-key::before { content:''; width:16px; border-top:2px dashed var(--c); flex:none; }
+    .ratio-wave-key { padding:3px 8px; border:1px solid var(--line-soft); border-radius:8px; color:var(--amber); }
+    [data-panel=ratio] { min-width:0; overflow:visible; }
+    [data-panel=ratio] .obs-inline { white-space:normal; overflow:visible; text-align:left; flex-basis:100%; }
+    [data-ratio-plot] { min-width:0; min-height:260px; margin-left:0; margin-right:0; }
+    @media(min-width:1181px) {
+      .obs-stage { overflow:hidden; }
+      .obs-panel { overflow:hidden; }
+      [data-ratio-plot] { min-height:0; }
+      [data-panel=ratio] .obs-panel-bar { gap:6px 10px; margin-bottom:0; }
+      [data-panel=ratio] .obs-inline { margin:0; font-size:11px; line-height:1.4; }
+      .ratio-annotations { gap:4px 12px; padding:2px 0 6px; font-size:10px; }
+      .ratio-wave-key { padding:1px 6px; }
+      .obs-heat { height:auto; grid-auto-rows:28px; align-content:start; }
+      .obs-heat-host { flex:1; margin-left:0; margin-right:0; }
+    }
     @media (prefers-reduced-motion:reduce) { .observatory *,.observatory *::before { transition:none !important; animation:none !important; } }
     @media (max-width:1180px) { .obs-frame { grid-template-columns:64px minmax(0,1fr); } .obs-side { grid-column:2; grid-row:1; position:static; display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:18px; } .obs-gauge { grid-row:span 2; } .obs-gauge svg { max-width:150px; } .obs-side-note { display:none; } .obs-actions { grid-template-columns:1fr; } .obs-stage { grid-column:2; } .obs-rail { grid-row:1 / span 2; } }
     @media (max-width:860px) { .span-3 { grid-column:span 6; } .span-6 { grid-column:span 12; } }
@@ -341,7 +371,7 @@ export function createVisitDashboard(backend, { getMember, onExit }) {
   root.innerHTML = `<div class="obs-shell">
     <div class="obs-frame"><nav class="obs-rail obs-glass" aria-label="상세 통계 바로가기">${rail.map(([key,label,svg])=>`<button type="button" data-jump="${key}" aria-label="${label}" aria-pressed="${key==='ratio'}" title="${label}">${svg}</button>`).join('')}</nav>
     <div class="obs-stage obs-glass"><header class="obs-top"><p class="obs-eyebrow">Igloo Village / Observatory</p><h1 id="obs-title">마을 성장 실험실</h1><p>사용자가 늘어나면, 기존 사용자도 더 자주 방문할까요?</p></header><div class="obs-state" role="status" aria-live="polite"></div><div class="obs-main" hidden></div></div>
-    <aside class="obs-side obs-glass" aria-label="오늘 현황"><div class="obs-clock"><strong data-clock>--:--</strong><span data-date></span><br><span class="obs-updated"></span></div><div><div class="obs-gauge" data-gauge></div><p class="obs-gauge-caption" data-gauge-caption></p></div><div class="obs-actions"><button type="button" data-refresh>새로고침</button><button class="obs-exit" type="button">나가기 ↗</button></div><p class="obs-side-note">1분마다 자동 갱신 · 개발팀 전용</p></aside></div>
+    <aside class="obs-side obs-glass" aria-label="오늘 현황"><div class="obs-clock"><strong data-clock>--:--</strong><span data-date></span><br><span class="obs-updated"></span></div><div><div class="obs-gauge" data-gauge></div><p class="obs-gauge-caption" data-gauge-caption></p></div><div class="obs-actions"><button type="button" data-refresh>새로고침</button><button class="obs-exit" type="button">나가기 ↗</button></div><p class="obs-side-note">1분마다 자동 갱신 · 개발팀·강사 전용</p></aside></div>
     <nav class="obs-dock obs-glass" aria-label="통계 조회 기간">${periods.map(([days,label])=>`<button type="button" data-period="${days}" aria-pressed="${days===period}">최근 ${label}</button>`).join('')}</nav></div>`;
   document.body.append(root);
   const q = s => root.querySelector(s), main=q('.obs-main'), state=q('.obs-state'), refreshButton=q('[data-refresh]');
@@ -359,12 +389,12 @@ export function createVisitDashboard(backend, { getMember, onExit }) {
     const token=++generation,member=getMember();
     if(loadedUser!==member?.id)view.clear();loadedUser=member?.id;
     busy=false;refreshButton.disabled=false;q('.obs-updated').textContent='';
-    if(!member?.approved){view.clear();showState('개발팀 계정으로 로그인해야 들어갈 수 있어요.');return;}
+    if(!member?.approved){view.clear();showState('승인된 계정으로 로그인해야 들어갈 수 있어요.');return;}
     busy=true;refreshButton.disabled=true;showState('실험 기록을 불러오는 중…');
     try{
       const allowed=await backend.canViewObservatory();
       if(!opened||token!==generation||loadedUser!==getMember()?.id)return;
-      if(!allowed){view.clear();showState('개발팀 전용 공간입니다.');return;}
+      if(!allowed){view.clear();showState('개발팀과 강사 전용 공간입니다.');return;}
       const [experiment,mine]=await Promise.allSettled([backend.getVisitExperiment(period),backend.getMemberVisitCounts()]);
       if(!opened||token!==generation||loadedUser!==getMember()?.id)return;
       if(experiment.status==='rejected')throw experiment.reason;

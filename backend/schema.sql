@@ -1200,3 +1200,97 @@ alter table public.instructor_materials drop constraint if exists instructor_mat
 alter table public.instructor_materials drop constraint if exists instructor_materials_category_fkey;
 alter table public.instructor_materials add constraint instructor_materials_category_fkey
   foreign key (category) references public.material_categories(id) on update cascade on delete restrict;
+
+
+-- 강사 전용 1회 초대코드 지원 (2026-11-11)
+-- 기존 초대 코드는 기본 student 역할과 무제한 사용을 유지한다.
+alter table private.invite_codes
+  add column role text not null default 'student' check (role in ('student','instructor')),
+  add column max_uses integer check (max_uses is null or max_uses > 0),
+  add column uses_count integer not null default 0 check (uses_count >= 0),
+  add column expires_at timestamptz;
+
+create or replace function private.invite_is_valid(p_code text) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from private.invite_codes c
+    where c.active
+      and c.code_hash=encode(pg_catalog.sha256(pg_catalog.convert_to(upper(trim(coalesce(p_code,''))),'UTF8')),'hex')
+      and (c.expires_at is null or c.expires_at > now())
+      and (c.max_uses is null or c.uses_count < c.max_uses)
+  );
+$$;
+
+create or replace function public.join_with_invite(p_code text,p_display_name text) returns public.members
+language plpgsql security definer set search_path = '' as $$
+declare
+  uid uuid := auth.uid();
+  name text := trim(coalesce(p_display_name,''));
+  invitation private.invite_codes;
+  result public.members;
+begin
+  if uid is null then raise exception '먼저 로그인해주세요.'; end if;
+  if char_length(name) not between 1 and 40 then raise exception '이름은 1~40자로 입력해주세요.'; end if;
+  -- 코드 행을 잠가 동시에 가입해도 사용 한도를 넘지 않도록 한다.
+  select * into invitation from private.invite_codes c
+  where c.code_hash=encode(pg_catalog.sha256(pg_catalog.convert_to(upper(trim(coalesce(p_code,''))),'UTF8')),'hex')
+  for update;
+  if not found or not invitation.active
+    or (invitation.expires_at is not null and invitation.expires_at <= now())
+    or (invitation.max_uses is not null and invitation.uses_count >= invitation.max_uses) then
+    raise exception '초대 코드가 맞지 않거나 만료됐어요.';
+  end if;
+  insert into public.members(id,display_name,role,approved)
+  values(uid,name,invitation.role,true)
+  on conflict(id) do update set approved=true
+    where members.role=excluded.role
+  returning * into result;
+  if result.id is null then
+    raise exception '이미 다른 역할로 가입된 계정입니다. 새 계정으로 가입해주세요.';
+  end if;
+  update private.invite_codes set uses_count=uses_count+1 where code_hash=invitation.code_hash;
+  return result;
+end;
+$$;
+-- 기존 함수의 EXECUTE 권한은 유지하며 초대 코드 테이블은 클라이언트에 공개하지 않는다.
+
+-- 운영 DB 적용 완료: allow_instructor_observatory_and_ai_summary. 재실행 금지.
+create or replace function public.can_view_observatory() returns boolean language sql stable set search_path='' as $$ select private.can_chat() or private.is_instructor(); $$;
+create or replace function private.can_run_ai_summary() returns boolean language sql stable security definer set search_path='' as $$ select private.is_instructor() or exists (select 1 from private.ai_summary_admins where member_id=(select auth.uid())); $$;
+do $block$ declare f record; definition text; checked integer:=0; begin
+for f in select p.oid,p.proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='private' and p.proname in ('aggregate_visit_counts','aggregate_visit_trend','read_visit_experiment') and pg_get_function_identity_arguments(p.oid)='p_days integer'
+loop definition:=pg_get_functiondef(f.oid); if position('if not private.can_chat() then' in definition)=0 then raise exception 'unexpected permission check in %',f.proname; end if; execute replace(definition,'if not private.can_chat() then','if not (private.can_chat() or private.is_instructor()) then'); checked:=checked+1; end loop;
+if checked<>3 then raise exception 'expected three visit functions, found %',checked; end if;
+end $block$;
+
+
+-- 운영 DB 적용: allow_reaction_recall_and_project_owner_clear; 전체 schema 재실행 금지.
+-- 현재 프로젝트에 내가 남긴 반응 회수와 소유자의 전체 삭제.
+create or replace function public.recall_project_reactions(p_project_id uuid)
+returns integer language plpgsql security definer set search_path = '' as $$
+declare v_count integer;
+begin
+  if (select auth.uid()) is null or not (select private.is_member()) then
+    raise insufficient_privilege using message = '승인된 회원만 사용할 수 있습니다.';
+  end if;
+  delete from public.project_reactions r where r.project_id=p_project_id and r.member_id=(select auth.uid());
+  get diagnostics v_count = row_count;
+  return v_count;
+end $$;
+revoke all on function public.recall_project_reactions(uuid) from public, anon;
+grant execute on function public.recall_project_reactions(uuid) to authenticated;
+
+create or replace function public.clear_project_reactions(p_project_id uuid)
+returns integer language plpgsql security definer set search_path = '' as $$
+declare v_count integer;
+begin
+  if (select auth.uid()) is null or not (select private.is_member()) or not exists (
+    select 1 from public.projects p join public.igloos i on i.id=p.igloo_id
+    where p.id=p_project_id and p.owner_id=(select auth.uid()) and i.owner_id=(select auth.uid())
+  ) then raise insufficient_privilege using message = '프로젝트 주인만 반응을 지울 수 있습니다.'; end if;
+  delete from public.project_reactions r where r.project_id=p_project_id;
+  get diagnostics v_count = row_count;
+  return v_count;
+end $$;
+revoke all on function public.clear_project_reactions(uuid) from public, anon;
+grant execute on function public.clear_project_reactions(uuid) to authenticated;

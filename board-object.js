@@ -1,7 +1,7 @@
 // 모닥불 옆의 A자 입간판 게시판. 메모 UI는 클릭하면 화면 가운데 홀로그램 카드로 연다.
 // 짙은 원목 둥근 틀 + 푸른 기 도는 흰 판, 윗면에 눈이 소복이 쌓여 있다(높이 약 1.5m).
 // 위치는 마을 배치가 끝난 뒤 place()로 정한다. 그 전에는 보이지도, 눌리지도 않는다.
-export function addAnonymousBoardObject(THREE, scene, { heightAt }) {
+export function addAnonymousBoardObject(THREE, scene, { heightAt, onOpen = () => {} }) {
   const root = new THREE.Group();
   root.visible = false;
   const wood = new THREE.MeshStandardMaterial({ color: 0x6b4a33, roughness: 0.82 });
@@ -53,11 +53,19 @@ export function addAnonymousBoardObject(THREE, scene, { heightAt }) {
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
+  const paperMaterial = new THREE.MeshStandardMaterial({ map: texture, roughness: .9, emissive: 0xffead0, emissiveIntensity: .035 });
   const panel = new THREE.Mesh(new THREE.BoxGeometry(W - 0.04, TOP - PANEL_LOW - 0.04, 0.04),
-    [snow, snow, snow, snow, new THREE.MeshStandardMaterial({ map: texture, roughness: 0.9 }), snow]);
+    [snow, snow, snow, snow, paperMaterial, snow]);
   panel.position.set(0, (TOP + PANEL_LOW) / 2, 0);
   panel.castShadow = true;
   front.add(panel);
+  const hint=document.createElement('button'); hint.type='button'; hint.className='board-discover';
+  hint.textContent='게시판 보기'; hint.setAttribute('aria-label','익명 게시판 열기'); hint.hidden=true;
+  hint.onclick=onOpen; document.body.append(hint);
+  let hintHovered=false, hoverAmount=0, lastTime=null, groundY=0, liftAmount=0, tiltAmount=0;
+  hint.onpointerenter=()=>{hintHovered=true;}; hint.onpointerleave=()=>{hintHovered=false;};
+  hint.onfocus=()=>{hintHovered=true;}; hint.onblur=()=>{hintHovered=false;};
+  const projected=new THREE.Vector3();
   // 윗가로대에 소복이 쌓인 눈
   const cap = bar(front, [-W / 2 + 0.02, TOP + 0.06, 0], [W / 2 - 0.02, TOP + 0.06, 0], snow, 0.07);
   cap.scale.set(1.35, 1, 0.75);
@@ -77,12 +85,33 @@ export function addAnonymousBoardObject(THREE, scene, { heightAt }) {
     root, targets,
     get placed() { return root.visible; },
     place(x, z, rotation = 0) {
-      root.position.set(x, heightAt(x, z), z);
+      groundY=heightAt(x,z);
+      root.position.set(x,groundY,z);
       root.rotation.y = rotation;
       root.visible = true;
       root.updateMatrixWorld(true);
       targets.length = 0;
       root.traverse(object => { if (object.isMesh) targets.push(object); });
+    },
+    update(time,camera,{active=false,hovered=false,reducedMotion=false,width=innerWidth,height=innerHeight}={}) {
+      const dt=lastTime===null?0:Math.min(.05,Math.max(0,time-lastTime)); lastTime=time;
+      const target=active&&(hovered||hintHovered)?1:0;
+      hoverAmount+=(target-hoverAmount)*(reducedMotion?1:1-Math.exp(-dt*10));
+      // 가끔 한 번만 가볍게 들썩여 사물 자체가 반응 가능한 대상임을 알려 준다.
+      const cycle=time%5.8;
+      const wave=active&&!reducedMotion&&cycle<1.8?Math.sin(cycle/1.8*Math.PI)**2*(1-hoverAmount):0;
+      const blend=reducedMotion?1:1-Math.exp(-dt*9);
+      liftAmount+=(wave*.075-liftAmount)*blend;
+      tiltAmount+=(wave*Math.sin(cycle/1.8*Math.PI*2)*.055-tiltAmount)*blend;
+      root.position.y=groundY+liftAmount; root.rotation.z=tiltAmount;
+      paperMaterial.emissiveIntensity=.035+hoverAmount*.18;
+      wood.emissive.setHex(0xffd6a0); wood.emissiveIntensity=hoverAmount*.07;
+      hint.hidden=!active||!root.visible||(!hovered&&!hintHovered&&hoverAmount<.05);
+      if(hint.hidden){hintHovered=false;return;}
+      root.updateMatrixWorld(true); projected.copy(point(0,.16,.30)).project(camera);
+      const x=(projected.x*.5+.5)*width,y=(-projected.y*.5+.5)*height;
+      hint.hidden=projected.z< -1||projected.z>1||x<55||x>width-55||y<16||y>height-42;
+      if(!hint.hidden){hint.style.left=x+'px';hint.style.top=y+'px';hint.classList.toggle('is-visible',Boolean(hovered||hintHovered));}
     },
     focusTarget() { root.updateMatrixWorld(true); return point(0, 0.95, 0); },
     // 게시판과 모닥불이 함께 보이도록 조금 떨어진 정면 위에서 바라본다.
