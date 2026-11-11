@@ -114,3 +114,9 @@ DB 설정이 끝났다는 이유로 테스트용 수강생이나 화면의 소�
 
 - `project-updates.sql`: `projects.announced_at`, `projects.update_note`(120자 이하) 추가와 `announce_project_update(p_id, p_note)` RPC. 내 프로젝트만 알릴 수 있고 같은 프로젝트는 10분에 한 번, 시간은 서버가 정한다. **원격 적용 완료**(마이그레이션 add_project_update_announce). `verify-project-updates.sql`(임시 계정·프로젝트, 전부 롤백) 시험 통과.
 - 클라이언트는 열이 없는 DB에서도 광장 보드가 등록 순으로 동작하도록 자동으로 되돌아간다(`listRecentProjects`).
+
+## 강사 전용 초대코드 (2026-11-11)
+
+- 마이그레이션 add_role_scoped_single_use_instructor_invites 적용. private.invite_codes에 role/max_uses/uses_count/expires_at 추가, 기존 코드는 student·무제한·만료 없음 유지. 가입 시 코드 행 잠금과 역할/사용 한도/만료 검사. 기존 계정의 다른 역할 전환 금지.
+- 강사 코드 1개 발급: 1회 사용, 7일 유효. 원문은 저장소에 기록하지 않음. 서버는 SHA-256 해시만 저장. 기존 가입 화면에서 새 계정 생성 시 사용, 프런트 배포 불필요.
+- verify-instructor-invites.sql에서 강사 역할·기존 학생 코드 호환·사용 후 무효·만료·학생 승격 거부·비공개 코드 테이블 차단 검증(rollback). 브라우저 실제 가입은 코드 소모를 피하기 위해 미실행.

@@ -540,6 +540,16 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
       }
       if (error && error.code !== '23505') throw error;
     },
+    async recallProjectReactions(projectId) {
+      if (!UUID.test(projectId)) throw new Error('존재하지 않는 프로젝트입니다.');
+      const { api } = await requireMember();
+      return unwrap(await api.rpc('recall_project_reactions', { p_project_id: projectId }));
+    },
+    async clearProjectReactions(projectId) {
+      if (!UUID.test(projectId)) throw new Error('존재하지 않는 프로젝트입니다.');
+      const { api } = await requireMember();
+      return unwrap(await api.rpc('clear_project_reactions', { p_project_id: projectId }));
+    },
     onCommentChange(callback) {
       events.addEventListener('comments', callback);
       return () => events.removeEventListener('comments', callback);

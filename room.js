@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { mountPrivacyPanel } from './privacy-panel.js';
 import { mountCardThemes } from './card-themes.js?v=compact-unlock-notice';
 import { mountExteriorLight } from './exterior-light.js?v=mintyellow1';
-import { mountProjectFeedback } from './project-feedback.js?v=react-drop1';
+import { mountProjectFeedback } from './project-feedback.js?v=reaction-recall1';
 import { createReactionPile } from './reaction-pile.js?v=react-drop1';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -137,6 +137,8 @@ const STYLE = `
   .feedback-reactions button[aria-pressed=true] { border-color: rgba(255,255,255,.62); background: rgba(255,255,255,.24); }
   .feedback-reactions button[aria-pressed=true] .reaction-icon { transform: scale(1.1); }
   .feedback-reactions button:disabled { opacity: .5; cursor: default; }
+  .feedback-reactions .feedback-reaction-reset { padding: 4px 9px; font-size: 11px; white-space: nowrap; }
+  .feedback-reactions .feedback-reaction-reset[hidden] { display: none; }
   .room-author [data-owner] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .room-author .room-avatar { flex: none; }
   .room-author .feedback-reactions { flex: none; margin-left: auto; gap: 6px; }

@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import { villageBackend } from './backend/client.js?v=member-mail1';
+import { villageBackend } from './backend/client.js?v=reaction-recall1';
 import { mountAuth } from './auth-ui.js';
 import { mountChat } from './chat-ui.js';
 import { mountCommentMailbox } from './comment-mailbox.js?v=public-mail2';
 import { createQualityControl } from './quality.js';
 import { addStatsBuilding } from './stats-building.js?v=hut4';
 import { mountAnonymousBoard } from './anonymous-board.js?v=note1';
-import { addAnonymousBoardObject } from './board-object.js?v=aframe-sign2';
+import { addAnonymousBoardObject } from './board-object.js?v=discover1';
 import { smooth, hash, createHeightAt, makeSnowBump, addGround } from './terrain.js?v=split1';
 import { mountTutorial } from './tutorial.js?v=3';
 
@@ -1028,7 +1028,7 @@ let mode = 'map', hovered = null, mine = null, mx = 0, my = 0, raising = null;
 let overBoard = true;
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 // 작은 표지판 게시판. 자리는 마을 배치(village.boardSpot)가 끝난 뒤 정한다.
-const boardObject = addAnonymousBoardObject(THREE, scene, { heightAt });
+const boardObject = addAnonymousBoardObject(THREE, scene, { heightAt, onOpen: openVillageBoard });
 const homeIgloo = id => igloos.find(ig => ig.home === id && !ig.house && !ig.stats);
 // 튜토리얼이 빛 고리를 그릴 자리. 이글루는 발밑, 게시판은 표지판 앞.
 const tutorialSpot = (x, z, r) => ({ x, z, y: heightAt(x, z), r });
@@ -1384,7 +1384,7 @@ async function enter(ig) {
     let allowed = false;
     try { allowed = await villageBackend.canViewObservatory(); } catch {}
     if (mode !== 'in' || auth.user?.id !== userId) return;
-    if (!allowed) return setBar('개발팀 전용 공간입니다.', [['마을로 돌아가기', leave]]);
+    if (!allowed) return setBar('개발팀과 강사 전용 공간입니다.', [['마을로 돌아가기', leave]]);
     return setBar('마을 관측소', [['방문 통계 보기', openVisitDashboard, true], ['마을로 돌아가기', leave]]);
   }
   if (!ig.house && !ig.mine && !ig.isPublic) return setBar('이글루가 닫혔습니다. 외부인이 들어오지 못합니다.', [['마을로 돌아가기', leave, true]]);
@@ -1400,10 +1400,10 @@ async function openVisitDashboard() {
   openingStats = true;
   try {
     const userId = auth.user?.id;
-    if (!await villageBackend.canViewObservatory()) return setBar('개발팀 전용 공간입니다.', [['마을로 돌아가기', leave]]);
+    if (!await villageBackend.canViewObservatory()) return setBar('개발팀과 강사 전용 공간입니다.', [['마을로 돌아가기', leave]]);
     if (mode !== 'in' || auth.user?.id !== userId) return;
     if (!visitDashboard) {
-      const { createVisitDashboard } = await import('./visit-dashboard.js?v=clear2');
+      const { createVisitDashboard } = await import('./visit-dashboard.js?v=legible1');
       visitDashboard = createVisitDashboard(villageBackend, { getMember: () => auth.member, onExit: closeVisitDashboard });
     }
     if (mode !== 'in') return;
@@ -1431,7 +1431,7 @@ const openLighthouseMail = () => {
   if (mode === 'room' && room === lighthouseRoom && mailComposer) mailComposer.open();
 };
 function showRoomActions(ig) {
-  if (ig.house) setBar('등대 안쪽', [['마을에 보내기', openLighthouseMail, true], ['밖으로 나가기', () => goOutside(ig)]]);
+  if (ig.house) setBar('등대 안쪽', [['메시지 보내기', openLighthouseMail, true], ['밖으로 나가기', () => goOutside(ig)]]);
   else if (ig.mine) setBar('내 이글루 안이에요', [['밖으로 나가기', () => goOutside(ig), true], ['이름 바꾸기', e => auth.openRename(e)]]);
   else setBar(`${ig.owner}의 이글루 안이에요`, [['밖으로 나가기', () => goOutside(ig), true]]);
 }
@@ -1466,7 +1466,7 @@ async function goInside(ig, projectId = null) {
   if (ig.house) {
     if (!lighthouseRoom) lighthouseRoom = (await import('./lighthouse-room.js?v=lh-cat1')).createLighthouseRoom({ renderer, isBlocked: () => Boolean(mailComposer?.isOpen() || archive?.isOpen() || dashboard?.isOpen()), places, hub: HUB, lighthouse: LIGHTHOUSE });
     // 책장을 누르면 여는 자료보관함. 강사 계정이면 올리기·수정·삭제가 더 보인다.
-    if (!archive) archive = (await import('./lighthouse-archive.js?v=category-width2')).createLighthouseArchive({
+    if (!archive) archive = (await import('./lighthouse-archive.js?v=close-align1')).createLighthouseArchive({
       backend: villageBackend, getMember: () => auth.member,
       onOpen: () => { bar.hidden = true; canvas.style.cursor = ''; lighthouseRoom.setMapHovered(false); },
       onClose: () => { bar.hidden = false; }
@@ -1483,7 +1483,7 @@ async function goInside(ig, projectId = null) {
       onOpen: () => { bar.hidden = true; canvas.style.cursor = ''; lighthouseRoom.setMapHovered(false); },
       onClose: () => { bar.hidden = false; }
     });
-    if (!mailComposer) mailComposer = (await import('./lighthouse-mail.js?v=write-only2')).createLighthouseMail({
+    if (!mailComposer) mailComposer = (await import('./lighthouse-mail.js?v=map-pick3')).createLighthouseMail({
       backend: villageBackend,
       getHomes: async () => {
         const [homes, names] = await Promise.all([villageBackend.getMap(), villageBackend.getMemberNames()]);
@@ -1497,7 +1497,7 @@ async function goInside(ig, projectId = null) {
     });
     room = lighthouseRoom;
   } else {
-    if (!iglooRoom) iglooRoom = (await import('./room.js?v=mintyellow1')).createRoom({ canvas, renderer, backend: villageBackend, onRoomPublicChange: value => { if (currentRoomIg) currentRoomIg.isPublic = value; }, onNotificationsRead: () => commentMailbox.refresh(), onExteriorLightChange: () => syncVillage().catch(() => {}) });
+    if (!iglooRoom) iglooRoom = (await import('./room.js?v=reaction-recall1')).createRoom({ canvas, renderer, backend: villageBackend, onRoomPublicChange: value => { if (currentRoomIg) currentRoomIg.isPublic = value; }, onNotificationsRead: () => commentMailbox.refresh(), onExteriorLightChange: () => syncVillage().catch(() => {}) });
     room = iglooRoom;
   }
   room.setAspect?.(W() / H());
@@ -1629,16 +1629,22 @@ function frame() {
   }
   village?.setMailboxHovered(mailboxHover);
   if (mode === 'in') canvas.style.cursor = mailboxHover !== null ? 'pointer' : '';
+  let boardHovered=false;
+  if(mode==='map'&&boardObject.placed&&touches.size===0){
+    ray.setFromCamera(pointer,camera);
+    boardHovered=ray.intersectObjects(boardObject.targets,false).length>0;
+  }
+  boardObject.update(t,camera,{active:mode==='map',hovered:boardHovered,reducedMotion:reduceMotion.matches,width:W(),height:H()});
   if (mode === 'map') {
     const hint = mapHintText();
     if (bar.dataset.kind === 'hint' && bar.textContent !== hint) setBar(hint, [], 'hint');
-    const ig = mailboxHover !== null ? null : pick();
-    canvas.style.cursor = mailboxHover !== null || ig ? 'pointer' : '';
+    const ig = mailboxHover !== null || boardHovered ? null : pick();
+    canvas.style.cursor = mailboxHover !== null || boardHovered || ig ? 'pointer' : '';
     if (ig !== hovered) {
       hovered = ig;
       ring.visible = !!ig && !ig.stats;
       rippleStart = t;
-      canvas.style.cursor = mailboxHover !== null || ig ? 'pointer' : '';
+      canvas.style.cursor = mailboxHover !== null || boardHovered || ig ? 'pointer' : '';
       if (ig) {
         ring.position.set(ig.group.position.x, 0, ig.group.position.z);
         fitRipples(ig);

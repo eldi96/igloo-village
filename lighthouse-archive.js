@@ -58,7 +58,8 @@ export function createLighthouseArchive({ backend, getMember, onOpen, onClose })
   .lar button:focus-visible, .lar a:focus-visible, .lar input:focus-visible, .lar textarea:focus-visible { outline: 2px solid var(--sage); outline-offset: 2px; }
   .lar-primary { display: inline-flex; align-items: center; gap: 8px; padding: 9px 18px; border-radius: 999px; background: var(--sage); color: #fff !important; font-weight: 500; font-size: 12px; text-decoration: none; box-shadow: 0 4px 12px rgba(107,127,110,.28); }
   .lar-ghost { padding: 8px 16px; border-radius: 999px; background: var(--card); font-size: 12px; box-shadow: 0 2px 8px rgba(110,90,66,.08), inset 0 0 0 1px var(--line); }
-  .lar-close { width: 34px; height: 34px; border-radius: 50%; background: var(--card) !important; font-size: 16px; line-height: 1; color: var(--sub) !important; box-shadow: 0 2px 8px rgba(110,90,66,.08); }
+  .lar-close { display: grid; place-items: center; flex: none; width: 34px; height: 34px; padding: 0; border-radius: 50%; background: var(--card) !important; line-height: 1; color: var(--sub) !important; box-shadow: 0 2px 8px rgba(110,90,66,.08); }
+  .lar-close svg { display: block; width: 14px; height: 14px; }
   .lar-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 248px minmax(0, 1fr) 280px; gap: 12px; }
   .lar-body.is-managing { grid-template-columns: 352px minmax(0, 1fr) 280px; }
   .lar-nav { min-height: 0; overflow-y: auto; padding: 18px 12px; display: flex; flex-direction: column; gap: 4px; }
@@ -134,7 +135,7 @@ export function createLighthouseArchive({ backend, getMember, onOpen, onClose })
   veil.className = 'lar-veil'; veil.hidden = true;
   veil.innerHTML = `<section class="lar" role="dialog" aria-modal="true" aria-labelledby="lar-title">
     <header class="lar-head"><div><p class="lar-kicker">LIGHTHOUSE ARCHIVE</p><h2 id="lar-title">자료 아카이브</h2><p class="lar-sub">강사님이 모아 둔 면담 예약, 웹사이트, 영상, 강의자료</p></div>
-      <div class="lar-head-actions"><button type="button" class="lar-primary" data-act="new" hidden>자료 올리기</button><button type="button" class="lar-close" data-act="close" aria-label="자료 아카이브 닫기">×</button></div></header>
+      <div class="lar-head-actions"><button type="button" class="lar-primary" data-act="new" hidden>자료 올리기</button><button type="button" class="lar-close" data-act="close" aria-label="자료 아카이브 닫기"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="m3 3 10 10M13 3 3 13"/></svg></button></div></header>
     <div class="lar-body"><nav class="lar-nav lar-card" aria-label="자료 분류"></nav>
       <div class="lar-main lar-card"><div class="lar-listhead"><p class="lar-label lar-count">전체 0</p><span class="lar-sort">최신순</span></div><div class="lar-list" role="list"></div></div>
       <aside class="lar-detail lar-card" aria-live="polite"></aside></div></section>`;

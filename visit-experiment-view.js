@@ -143,7 +143,7 @@ function ratioChart(root, days, A, groupId, layers, animate) {
   const tag = date => ({ 'is-weekend':'주말 · 비교 제외', 'is-wave':'유입 당일 · 비교 제외', 'is-today':'오늘 · 진행 중', '':'평일' })[kind(date)];
   let out = `<defs><linearGradient id="obs-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".28"/><stop offset="1" stop-color="#fff" stop-opacity=".02"/></linearGradient><linearGradient id="obs-barfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd794"/><stop offset="1" stop-color="#e8963a"/></linearGradient><pattern id="obs-hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2.5" height="7" fill="#fff" opacity=".08"/></pattern></defs>`;
   let prevWeekend = false;
-  days.forEach((d, i) => { const wk = isWeekend(d.date); if (wk) out += `<rect x="${L + band * i}" y="${T}" width="${band}" height="${B - T}" fill="url(#obs-hatch)"/>` + (prevWeekend ? '' : `<text class="zone-label" x="${L + band * i + 6}" y="${T + 32}">주말</text>`); prevWeekend = wk; });
+  days.forEach((d, i) => { const wk = isWeekend(d.date); if (wk) out += `<rect x="${L + band * i}" y="${T}" width="${band}" height="${B - T}" fill="url(#obs-hatch)"/>`; prevWeekend = wk; });
   const inRange = d => d >= days[0].date && d <= days[n - 1].date;
   A.waveDates.forEach(d => { if (inRange(d)) { const x = xAt(d); out += `<line class="zone-line" x1="${x}" x2="${x}" y1="${T - 6}" y2="${B}"/>`; } });
   if (!A.waveDates.length && A.planned && inRange(A.planned)) { const x = xAt(A.planned); out += `<line class="zone-line" x1="${x}" x2="${x}" y1="${T - 6}" y2="${B}"/><text class="zone-label is-after" x="${Math.min(x + 8, R - 64)}" y="${T + 14}">유입 예정</text>`; }
@@ -153,7 +153,7 @@ function ratioChart(root, days, A, groupId, layers, animate) {
     out += `<path class="a-fade" d="${ridge} L${cx(n-1)},${B} L${cx(0)},${B} Z" fill="url(#obs-area)"/><path class="a-draw" pathLength="1" d="${ridge}" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="1.6" stroke-linejoin="round"/>`;
   }
   if (layers.base) {
-    const every = Math.max(1, Math.ceil(n / 12));
+    const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(root.clientWidth / 72))));
     out += days.map((d, i) => {
       const v = vals[i]; if (!v.n) return '';
       const h = Math.max(2, B - y(v.total)), r = rate(v.total), label = A.usable(d.date) && r !== null && i % every === 0;
@@ -164,7 +164,7 @@ function ratioChart(root, days, A, groupId, layers, animate) {
   if (layers.avg) segs.forEach((sg, k) => {
     const x1 = Math.max(L, xAt(sg.from)), x2 = xAt(sg.to); if (x2 - x1 < 4) return;
     const yy = y(sg.stat.total);
-    out += `<line class="avg-line${k ? ' is-after' : ''} a-fade" x1="${x1}" x2="${x2}" y1="${yy}" y2="${yy}"/><text class="avg-label${k ? ' is-after' : ''} a-fade" x="${x2 - 6}" y="${yy - 7}" text-anchor="end">평일 평균 ${fmt1(sg.stat.total)}</text>`;
+    out += `<line class="avg-line${k ? ' is-after' : ''} a-fade" x1="${x1}" x2="${x2}" y1="${yy}" y2="${yy}"/>`;
   });
   svg.innerHTML = out + xLabels(days.map(d => d.date), cx);
   const size = fitText(root, svg);
@@ -186,25 +186,22 @@ function ratioChart(root, days, A, groupId, layers, animate) {
           + (() => { const who = visitedOthers(d.date); return who.length ? `<small class="tip-sub">이날 들어온 그 밖 사용자 ${who.length}명</small><div class="tip-names">${who.slice(0, 8).map(w => `<span>${esc(w)}</span>`).join('')}${who.length > 8 ? `<span>외 ${who.length - 8}명</span>` : ''}</div>` : ''; })() };
     },
   });
-  // 유입 차수 배지: "1차 유입 10명". 마우스·포커스를 두면 명단(가입일)을 보여 준다.
-  const badgeTip = tooltip(root), sr = root.querySelector('.obs-sr');
-  A.waveDates.forEach((wd, k) => {
-    if (!inRange(wd)) return;
-    const grp = A.groups[k + 1], text = `${k + 1}차 유입 ${grp.members.length}명`, h = size * 1.8, w = [...text].length * size * .78 + size * 1.4;
-    const x = Math.min(xAt(wd) + 6, R - w), yb = T - h * .35;
-    const el = document.createElementNS(NS, 'g');
-    el.setAttribute('class', 'wave-badge'); el.setAttribute('tabindex', '0'); el.setAttribute('role', 'button');
-    el.setAttribute('aria-label', `${text}: ${grp.members.map(m => m.name).join(', ')}`);
-    el.innerHTML = `<rect x="${x}" y="${yb}" width="${w}" height="${h}" rx="${h / 2}"/><text x="${x + w / 2}" y="${yb + h / 2 + size * .36}" text-anchor="middle" style="font-size:${size}px">${text}</text>`;
-    svg.append(el);
-    const show = () => {
-      const p = svgPoint(root, svg, x + w, yb + h / 2);
-      badgeTip.at(tipHead(`${k + 1}차 유입 · ${md(wd)}`, `${grp.members.length}명 합류`) + `<div class="tip-names">${grp.members.map(m => `<span>${esc(m.name)}${m.joined !== wd ? ` · ${md(m.joined)}` : ''}</span>`).join('')}</div>`, p.x, p.y);
-      sr.textContent = el.getAttribute('aria-label');
-    };
-    el.addEventListener('pointerenter', show); el.addEventListener('focus', show);
-    el.addEventListener('pointerleave', () => badgeTip.hide()); el.addEventListener('blur', () => badgeTip.hide());
+  // 설명을 실제 CSS 글자 크기로 배치해 SVG 축/막대 수치와 겹치지 않게 한다.
+  const annotations=document.createElement('div'); annotations.className='ratio-annotations';
+  if(layers.avg) segs.forEach((sg,k)=>{
+    const label=document.createElement('span'); label.className='ratio-average-key';
+    label.style.setProperty('--c',k?AMBER:WHITE);
+    label.textContent=`${md(sg.from)}~${sg.to?md(sg.to):'현재'} 평일 평균 ${fmt1(sg.stat.total)}회`;
+    annotations.append(label);
   });
+  A.waveDates.forEach((wd,k)=>{
+    if(!inRange(wd))return;
+    const grp=A.groups[k+1],label=document.createElement('span'); label.className='ratio-wave-key';
+    label.textContent=`${md(wd)} · ${k+1}차 유입 ${grp.members.length}명`;
+    label.title=grp.members.map(m=>m.name).join(', '); label.tabIndex=0;
+    annotations.append(label);
+  });
+  if(annotations.childNodes.length)root.prepend(annotations);
 }
 
 // 주말 접속: 주말 날짜마다 그룹별(처음 5명 / n차 유입) 누적 막대 + 평일 하루 평균선.
@@ -439,7 +436,7 @@ export function mountExperimentView(root, { gauge: gaugeHost = null, gaugeCaptio
    <div class="obs-panel" role="tabpanel" id="obs-panel-scatter" aria-labelledby="obs-tab-scatter" data-panel="scatter" hidden><div class="obs-panel-bar"><div class="obs-stats" data-scatter-stats></div><span class="experiment-caption obs-inline">점 하나 = 완료된 평일(주말·유입 당일 제외) · <b class="k-dot is-after"></b>유입 후 <b class="k-dot"></b>유입 전 · 가로축에서 처음 5명은 뺐어요</span></div><div class="obs-plot" data-scatter-plot></div></div>
    <div class="obs-panel" role="tabpanel" id="obs-panel-heat" aria-labelledby="obs-tab-heat" data-panel="heat" hidden><div class="obs-panel-bar"><div class="heat-scale" aria-hidden="true"><span>적음</span><i></i><span>많음</span><b></b><span>가입 전</span></div><span class="experiment-caption obs-inline">칸에 마우스를 올리거나 방향키로 이동하세요</span></div><div class="obs-plot obs-heat-host" data-heat></div></div>
    <div class="obs-panel obs-users" role="tabpanel" id="obs-panel-users" aria-labelledby="obs-tab-users" data-panel="users" hidden><aside class="obs-userlist" aria-label="그래프에 표시할 사용자"><div class="obs-userlist-filters"><div class="obs-tabs" aria-label="사용자 표시 범위"><button type="button" data-scope="baseline" aria-pressed="true">기존 5명</button><button type="button" data-scope="all" aria-pressed="false">전체</button></div><div class="obs-tabs" aria-label="사용자 그래프 집계 방식"><button type="button" data-metric="daily" aria-pressed="true">일별</button><button type="button" data-metric="cumulative" aria-pressed="false">누적</button></div></div><div class="obs-userlist-actions"><button type="button" data-select-all>모두 켜기</button><button type="button" data-select-none>모두 끄기</button></div><div class="experiment-toggles" aria-label="사용자별 그래프 표시 (기존 5명은 고정 표본)"></div><p class="experiment-caption obs-arrivals" data-arrivals></p></aside><div class="obs-plot" data-users-plot></div></div>
-   <div class="obs-panel" role="tabpanel" id="obs-panel-table" aria-labelledby="obs-tab-table" data-panel="table" hidden><p class="experiment-caption">사용자 추이 탭에서 고른 범위(기존 5명/전체)와 집계 방식(일별/누적)을 따릅니다.</p><div class="obs-table"><div class="obs-table-wrap"><table><thead></thead><tbody></tbody></table></div></div><p class="obs-note" title="한국 시간 기준 · 30분 중복 방지 규칙으로 인정된 접속 횟수입니다. 관측소 통계는 개발팀만 조회할 수 있어요. 가입 전은 0회 대신 집계 대상 아님(—)으로 표시합니다. 누적값에는 조회 기간 이전 기록도 포함됩니다.">한국 시간 기준 · 30분 중복 방지 규칙으로 인정된 접속 횟수입니다. 관측소 통계는 개발팀만 조회할 수 있어요. 가입 전은 0회 대신 집계 대상 아님(—)으로 표시합니다. 누적값에는 조회 기간 이전 기록도 포함됩니다.</p></div>
+   <div class="obs-panel" role="tabpanel" id="obs-panel-table" aria-labelledby="obs-tab-table" data-panel="table" hidden><p class="experiment-caption">사용자 추이 탭에서 고른 범위(기존 5명/전체)와 집계 방식(일별/누적)을 따릅니다.</p><div class="obs-table"><div class="obs-table-wrap"><table><thead></thead><tbody></tbody></table></div></div><p class="obs-note" title="한국 시간 기준 · 30분 중복 방지 규칙으로 인정된 접속 횟수입니다. 관측소 통계는 개발팀과 강사만 조회할 수 있어요. 가입 전은 0회 대신 집계 대상 아님(—)으로 표시합니다. 누적값에는 조회 기간 이전 기록도 포함됩니다.">한국 시간 기준 · 30분 중복 방지 규칙으로 인정된 접속 횟수입니다. 관측소 통계는 개발팀과 강사만 조회할 수 있어요. 가입 전은 0회 대신 집계 대상 아님(—)으로 표시합니다. 누적값에는 조회 기간 이전 기록도 포함됩니다.</p></div>
    <div class="obs-panel" role="tabpanel" id="obs-panel-weekend" aria-labelledby="obs-tab-weekend" data-panel="weekend" hidden><div class="obs-panel-bar"><div class="obs-stats" data-weekend-stats></div><span class="obs-key" data-weekend-key></span><span class="experiment-caption obs-inline">주말은 평일 비교에서 빼고 여기서만 봐요</span></div><div class="obs-plot" data-weekend-plot></div></div>
    <div class="obs-panel" role="tabpanel" id="obs-panel-report" aria-labelledby="obs-tab-report" data-panel="report" hidden><div class="obs-report" data-report></div></div>
   </section></div>`;
@@ -510,7 +507,20 @@ export function mountExperimentView(root, { gauge: gaugeHost = null, gaugeCaptio
     arrivalsEl.textContent = arrivals.length ? `신규 유입 기록: ${arrivals.map(m => `${m.joined} ${m.name}`).join(' · ')}` : `신규 사용자는 아직 없어요. ${data.expansion}에 5명 유입 예정이며 승인된 수강생은 자동으로 집계합니다.${future.length ? ' 예약된 집계 대상 ' + future.length + '명.' : ''}`;
     arrivalsEl.title = arrivalsEl.textContent;
     const head = document.createElement('tr');
-    for (const label of ['날짜', ...members.map(m => m.name)]) { const th = document.createElement('th'); th.scope = 'col'; th.textContent = label; th.title = label; head.append(th); }
+    const dateHead=document.createElement('th'); dateHead.scope='col'; dateHead.textContent='날짜'; head.append(dateHead);
+    const tablePanel=q('[data-panel=table]'); tablePanel.querySelector('.obs-tip')?.remove();
+    const nameTip=tooltip(tablePanel);
+    members.forEach(m=>{
+      const th=document.createElement('th'); th.scope='col'; th.setAttribute('aria-label',m.name);
+      const key=document.createElement('button'); key.type='button'; key.className='obs-member-key';
+      key.setAttribute('aria-label',m.name); key.title=m.name;
+      const dot=document.createElement('i'); dot.style.background=colors[data.members.indexOf(m)%colors.length]; dot.setAttribute('aria-hidden','true'); key.append(dot);
+      const show=()=>{const b=key.getBoundingClientRect(),p=tablePanel.getBoundingClientRect();nameTip.at(tipHead(m.name),b.left-p.left+b.width/2,b.bottom-p.top+18);};
+      key.onpointerenter=show; key.onfocus=show; key.onclick=show;
+      key.onpointerleave=()=>nameTip.hide(); key.onblur=()=>nameTip.hide();
+      th.append(key); head.append(th);
+    });
+    q('table').style.minWidth=(140+members.length*48)+'px';
     q('thead').replaceChildren(head);
     q('tbody').replaceChildren(...allDays.map(d => d.date).reverse().map(date => { const tr = document.createElement('tr'); for (const value of [date, ...members.map(m => data.series.get(m.key).get(date)?.[metric])]) { const td = document.createElement('td'); td.textContent = value == null ? '—' : typeof value === 'number' ? fmt(value) : value; if (value === 0) td.className = 'is-zero'; tr.append(td); } return tr; }));
   }
