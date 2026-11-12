@@ -907,6 +907,10 @@ let updateWavingSanta = null;
 // 주인이 있는 이글루 번호. 마을 모듈이 늦게 불러와져도 우편함을 맞게 세운다.
 let ownedHomeIds = [];
 let polarBear = null;
+let updatePenguins;
+const penguinBodies = [];
+let doorPenguinHome = null;
+let positionDoorPenguin;
 import('./village.js?v=pond-gap-patch2')
   .then(m => {
     // 모닥불은 관측소를 옮기기 전 자리(도로 오른쪽)에 고정한다. 난수 배치에 맡기면 다른 건물을 옮길 때마다 산타·게시판까지 함께 움직인다.
@@ -923,13 +927,20 @@ import('./village.js?v=pond-gap-patch2')
         .then(update => { updateWavingSanta = update; })
         .catch(error => console.warn('인사하는 산타를 불러오지 못했어요', error));
     }
+    import('./penguins.js?v=traffic2').then(({addPenguins}) => addPenguins(scene, HUB, heightAt,
+      [...village.walkingObstacles, {...signSpot,r:.75}], () => polarBear?.root.position, position => {
+        positionDoorPenguin = position;
+        position(doorPenguinHome);
+      }, penguinBodies, () => santa?.position))
+      .then(update => { updatePenguins = update; })
+      .catch(error => console.warn('펭귄을 불러오지 못했어요', error));
     import('./polar-bear.js?v=pet2')
       .then(({ addPolarBear }) => addPolarBear(scene, { obstacles: village.walkingObstacles, heightAt }))
       .then(bear => { polarBear = bear; })
       .catch(error => console.warn('북극곰을 불러오지 못했어요:', error));
     renderer.shadowMap.needsUpdate = true;
-    import('./santa.js?v=shorewalk1')
-      .then(({ addSanta }) => addSanta(scene, { fireSpot: village.fireSpot, lakesideHome: places.reduce((nearest, home) =>
+    import('./santa.js?v=shorewalk2')
+      .then(({ addSanta }) => addSanta(scene, { fireSpot: village.fireSpot, penguinBodies, lakesideHome: places.reduce((nearest, home) =>
         Math.hypot(home.x-HUB.x, home.z-HUB.z) < Math.hypot(nearest.x-HUB.x, nearest.z-HUB.z) ? home : nearest), obstacles: [...village.walkingObstacles, {...signSpot,r:.75}], bearPosition: () => polarBear?.root.position, heightAt, height: R * 0.8 }))
       .then(character => { santa = character; renderer.shadowMap.needsUpdate = true; })
       .catch(error => console.warn('산타 모델을 불러오지 못했어요:', error));
@@ -1284,6 +1295,8 @@ async function syncVillage(raiseHome = null) {
     const approved = auth.member?.approved;
     const names = approved ? await villageBackend.getMemberNames() : [];
     const nameOf = new Map(names.map(m => [m.id, m.display_name]));
+    doorPenguinHome = places[homes.find(home => nameOf.get(home.owner_id) === "\uBC15\uC131\uADFC")?.id] ?? null;
+    positionDoorPenguin?.(doorPenguinHome);
     mine = null;
     latestProjectAt.clear();
     for (const { id, owner_id: ownerId, is_public: isPublic, latest_project_at: latest, exterior_light: exteriorLight } of homes) {
@@ -1594,6 +1607,7 @@ function frame() {
   if (updateWavingSanta) updateWavingSanta(dt);
   if (santa) santa.update(dt);
   if (polarBear) polarBear.update(dt);
+  updatePenguins?.(dt);
 
   flags.forEach(f => { f.time.value = t; });
   if (village?.mailboxRising) renderer.shadowMap.needsUpdate = true;

@@ -2,6 +2,14 @@
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const mix = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t });
 
+export function clearsCharacters(a, b, characters, radius) {
+  const dx = b.x - a.x, dz = b.z - a.z;
+  return characters.every(c => {
+    const t = Math.max(0, Math.min(1, ((c.x-a.x)*dx + (c.z-a.z)*dz) / (dx*dx+dz*dz || 1)));
+    return Math.hypot(a.x+t*dx-c.x, a.z+t*dz-c.z) >= radius+c.r;
+  });
+}
+
 export function createBearNavigation({ obstacles, heightAt, radius, margin = 0.24,
   bounds = { minX: -43, maxX: 43, minZ: -38, maxZ: 27 }, step = 0.7 }) {
   const clearance = radius + margin;
@@ -63,7 +71,8 @@ export function createBearNavigation({ obstacles, heightAt, radius, margin = 0.2
     }
     return best;
   }
-  function findPath(start, goal) {
+  function findPath(start, goal, allowSegment) {
+    const clear = (a,b,extra) => (!allowSegment || allowSegment(a,b)) && segmentClear(a,b,extra);
     const sid = nearest(start), gid = nearest(goal);
     if (sid < 0 || gid < 0 || !isClear(start.x, start.z) || !isClear(goal.x, goal.z)) return [];
     const costs = new Float64Array(cells.length).fill(Infinity), parents = new Int32Array(cells.length).fill(-1);
@@ -85,7 +94,7 @@ export function createBearNavigation({ obstacles, heightAt, radius, margin = 0.2
       }
       return result.id;
     };
-    if (!segmentClear(start, positions[sid]) || !segmentClear(positions[gid], goal)) return [];
+    if (!clear(start, positions[sid]) || !clear(positions[gid], goal)) return [];
     costs[sid] = 0;push(sid, distance(positions[sid], positions[gid]));
     while (heap.length) {
       const id = pop();if (closed[id]) continue;closed[id] = 1;
@@ -97,7 +106,7 @@ export function createBearNavigation({ obstacles, heightAt, radius, margin = 0.2
         if (!cells[next] || closed[next]) continue;
         if (dx && dz && (!cells[id + dx] || !cells[id + dz * nx])) continue;
         const cost = costs[id] + Math.hypot(dx, dz) * step;
-        if (cost >= costs[next] || !segmentClear(positions[id], positions[next], gridMargin)) continue;
+        if (cost >= costs[next] || !clear(positions[id], positions[next], gridMargin)) continue;
         costs[next] = cost;parents[next] = id;
         push(next, cost + distance(positions[next], positions[gid]));
       }
@@ -109,7 +118,7 @@ export function createBearNavigation({ obstacles, heightAt, radius, margin = 0.2
     const simple = [path[0]];
     for (let i = 0; i < path.length - 1;) {
       let j = path.length - 1;
-      while (j > i + 1 && !segmentClear(path[i], path[j], gridMargin)) j--;
+      while (j > i + 1 && !clear(path[i], path[j], gridMargin)) j--;
       if (distance(simple[simple.length - 1], path[j]) > 0.001) simple.push(path[j]);
       i = j;
     }
@@ -119,7 +128,7 @@ export function createBearNavigation({ obstacles, heightAt, radius, margin = 0.2
     clearance, walkableCells: cells.reduce((n, v) => n + v, 0) };
 }
 
-export function makeBearLoop(navigation, anchors) {
+export function makeBearLoop(navigation, anchors, minimumLength = 25) {
   const points = anchors.map(p => navigation.nearestPoint(p)).filter(Boolean);
   if (points.length < 3) throw new Error('북극곰이 다닐 안전한 공간이 부족합니다.');
   const route = [points[0]];
@@ -193,7 +202,7 @@ export function makeBearLoop(navigation, anchors) {
     lengths.push(lengths[i - 1] + distance(samples[i - 1], samples[i]));
   }
   const total = lengths[lengths.length - 1];
-  if (total < 25) throw new Error('북극곰 산책 경로가 너무 짧습니다.');
+  if (total <= 0 || total < minimumLength) throw new Error('북극곰 산책 경로가 너무 짧습니다.');
   function sample(d, target = {}) {
     d = ((d % total) + total) % total;
     let low = 0, high = lengths.length - 1;
