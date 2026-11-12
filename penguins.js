@@ -16,17 +16,21 @@ function bindLimbs(body) {
   }
   const rotation = new THREE.Quaternion();
   return (phase, stride, fall) => {
+    const swing = Math.sin(phase);
+    const lift = Math.cos(phase);
+    const tip = Math.sin(phase-.35);
     for (const {bone,role,side,axis,rest} of joints) {
-      const swing = Math.sin(phase)*side;
-      const lift = Math.max(0, Math.cos(phase)*side);
-      const angles = {
-        hip: -.43*swing*stride-.16*fall,
-        knee: .35*lift*stride+.22*fall,
-        foot: (.30*swing-.24*lift)*stride,
-        wing: .24*swing*stride-.55*fall,
-        tip: .09*Math.sin(phase-.35)*side*stride-.12*fall
-      };
-      bone.quaternion.copy(rest).multiply(rotation.setFromAxisAngle(axis,angles[role]));
+      const step = swing*side*stride;
+      const rise = Math.max(0,lift*side)*stride;
+      let angle;
+      switch (role) {
+        case 'hip': angle = -.43*step-.16*fall; break;
+        case 'knee': angle = .35*rise+.22*fall; break;
+        case 'foot': angle = .30*step-.24*rise; break;
+        case 'wing': angle = .24*step-.55*fall; break;
+        case 'tip': angle = .09*tip*side*stride-.12*fall; break;
+      }
+      bone.quaternion.copy(rest).multiply(rotation.setFromAxisAngle(axis,angle));
     }
   };
 }
@@ -60,14 +64,23 @@ export async function addPenguins(scene, hub, heightAt, obstacles, bearPosition,
           #ifdef DECODE_VIDEO_TEXTURE`));
     };
   });
-  const doorBody = clone(model);
-  doorBody.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(doorBody, true);
-  const center = box.getCenter(new THREE.Vector3());
-  doorBody.position.sub(new THREE.Vector3(center.x, box.min.y, center.z));
+  model.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(model, true);
+  const origin = box.getCenter(new THREE.Vector3());
+  origin.y = box.min.y;
+  const modelHeight = box.max.y-box.min.y;
   const doorPenguin = new THREE.Group();
-  doorPenguin.add(doorBody);
-  doorPenguin.scale.setScalar(.78 / (box.max.y - box.min.y));
+  model.traverse(part => {
+    if (!part.isMesh) return;
+    const mesh = new THREE.Mesh(part.geometry, part.material);
+    mesh.matrix.copy(part.matrixWorld);
+    mesh.matrix.elements[12] -= origin.x;
+    mesh.matrix.elements[13] -= origin.y;
+    mesh.matrix.elements[14] -= origin.z;
+    mesh.matrixAutoUpdate = false;
+    doorPenguin.add(mesh);
+  });
+  doorPenguin.scale.setScalar(.78 / modelHeight);
   doorPenguin.visible = false;
   scene.add(doorPenguin);
   const doorBodyPosition = {x:0,z:0,r:.55};
@@ -84,7 +97,10 @@ export async function addPenguins(scene, hub, heightAt, obstacles, bearPosition,
     doorPenguin.rotation.y = home.yaw;
   });
   const bounds = { minX:hub.x-13, maxX:hub.x+13, minZ:hub.z-12, maxZ:hub.z+12 };
-  const nav = createBearNavigation({ obstacles, heightAt, bounds, radius:1, step:.55 });
+  const nearbyObstacles = obstacles.filter(o =>
+    o.x+o.r+2 >= bounds.minX && o.x-o.r-2 <= bounds.maxX &&
+    o.z+o.r+2 >= bounds.minZ && o.z-o.r-2 <= bounds.maxZ);
+  const nav = createBearNavigation({ obstacles:nearbyObstacles, heightAt, bounds, radius:1, step:.55 });
   const followingDistance = 1.6;
   const shores = Array.from({length:24}, (_,i)=>{
     const angle=i*Math.PI/12, radius=i%2 ? 9.2 : 7.6;
@@ -93,8 +109,13 @@ export async function addPenguins(scene, hub, heightAt, obstacles, bearPosition,
   if (!shores.length) return;
   let trail=[{...shores[0],d:0}], end=0;
   function at(distance, points=trail){
-    const i=points.findIndex(p=>p.d>=distance);
-    if(i<0)return points[points.length-1];
+    let i=0, upper=points.length;
+    while(i<upper){
+      const mid=(i+upper)>>>1;
+      if(points[mid].d<distance)i=mid+1;
+      else upper=mid;
+    }
+    if(i===points.length)return points[i-1];
     if(i===0)return points[0];
     const a=points[i-1], b=points[i], t=(distance-a.d)/(b.d-a.d);
     return {x:a.x+(b.x-a.x)*t,z:a.z+(b.z-a.z)*t};
@@ -126,10 +147,9 @@ export async function addPenguins(scene, hub, heightAt, obstacles, bearPosition,
   const family = [.98,.58].map((height,i)=>{
     const body=clone(model), root=new THREE.Group();
     body.updateMatrixWorld(true);
-    const box=new THREE.Box3().setFromObject(body,true), center=box.getCenter(new THREE.Vector3());
-    body.position.sub(new THREE.Vector3(center.x,box.min.y,center.z));
+    body.position.sub(origin);
     const pivot=new THREE.Group();
-    pivot.add(body); pivot.scale.setScalar(height/(box.max.y-box.min.y));
+    pivot.add(body); pivot.scale.setScalar(height/modelHeight);
     root.add(pivot); scene.add(root);
     const collider = {...at(followingDistance*(1-i)), r:i ? .48 : .72};
     penguinBodies.push(collider);

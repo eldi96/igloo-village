@@ -927,7 +927,7 @@ import('./village.js?v=pond-gap-patch2')
         .then(update => { updateWavingSanta = update; })
         .catch(error => console.warn('인사하는 산타를 불러오지 못했어요', error));
     }
-    import('./penguins.js?v=traffic2').then(({addPenguins}) => addPenguins(scene, HUB, heightAt,
+    import('./penguins.js?v=perf1').then(({addPenguins}) => addPenguins(scene, HUB, heightAt,
       [...village.walkingObstacles, {...signSpot,r:.75}], () => polarBear?.root.position, position => {
         positionDoorPenguin = position;
         position(doorPenguinHome);
