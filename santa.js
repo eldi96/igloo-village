@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { createBearNavigation } from './bear-navigation.js';
+import { createBearNavigation, clearsCharacters } from "./bear-navigation.js?v=traffic1";
 
-export async function addSanta(scene,{fireSpot,lakesideHome,heightAt,height,obstacles,bearPosition}) {
+export async function addSanta(scene,{fireSpot,lakesideHome,heightAt,height,obstacles,bearPosition,penguinBodies}) {
   if (!fireSpot) return;
   const {scene:model,animations}=await new GLTFLoader().loadAsync(new URL('./assets/SantaGirl.glb?v=idle15-v1',import.meta.url).href);
   model.updateMatrixWorld(true);
@@ -88,7 +88,9 @@ export async function addSanta(scene,{fireSpot,lakesideHome,heightAt,height,obst
   let pos={...stops[0]},index=0,path=[],pause=.6,reaction=-1,armed=true,speed=0,moving=0;
   let turnFrom=0, turnDuration=0, turnAngle=0;
   root.position.set(pos.x,heightAt(pos.x,pos.z),pos.z);scene.add(root);
-  return {update(dt){
+  let replanIn=0;
+  const clearOfPenguins=(a,b)=>clearsCharacters(a,b,penguinBodies,.84);
+  return {position:root.position,update(dt){
     dt=Math.min(dt,.08);
     const b=bearPosition(),distance=b?Math.hypot(pos.x-b.x,pos.z-b.z):Infinity;
     if(reaction<0 && distance>5.5)armed=true;
@@ -129,6 +131,16 @@ export async function addSanta(scene,{fireSpot,lakesideHome,heightAt,height,obst
       index=next;
       if(!path.length)pause=.25;
     }
+    replanIn-=dt;
+    if(path.length && replanIn<=0){
+      const q=path[0], t=Math.min(1,1.5/(Math.hypot(q.x-pos.x,q.z-pos.z)||1));
+      if(!clearOfPenguins(pos,{x:pos.x+(q.x-pos.x)*t,z:pos.z+(q.z-pos.z)*t})){
+        const detour=nav.findPath(pos,stops[index],clearOfPenguins).slice(1);
+        if(detour.length)path=detour;
+        else {path=[];pause=.35;}
+        replanIn=.5;
+      }
+    }
     let targetSpeed=0;
     if(path.length && pause<=0){
       const q=path[0], x=q.x-pos.x, z=q.z-pos.z, d=Math.hypot(x,z);
@@ -139,13 +151,17 @@ export async function addSanta(scene,{fireSpot,lakesideHome,heightAt,height,obst
       targetSpeed=.83*braking*(.55+.45*Math.max(0,Math.cos(turn)));
       speed=THREE.MathUtils.damp(speed,targetSpeed,7,dt);
       const step=Math.min(d,speed*dt);
+      const next={x:pos.x+x/(d||1)*step,z:pos.z+z/(d||1)*step};
+      if(!clearOfPenguins(pos,next)){speed=0;}
+      else {
       if(d>.0001){pos.x+=x/d*step;pos.z+=z/d*step;}
       if(d<=step+.0001){pos.x=q.x;pos.z=q.z;path.shift();if(!path.length)pause=1.3+Math.random()*1.6;}
+      }
     }else{
       speed=THREE.MathUtils.damp(speed,0,8,dt);
     }
     root.position.set(pos.x,heightAt(pos.x,pos.z),pos.z);
-    moving=THREE.MathUtils.damp(moving,path.length&&pause<=0?1:0,9,dt);
+    moving=THREE.MathUtils.damp(moving,speed>.025?1:0,9,dt);
     idle.setEffectiveWeight(1-moving);walk.setEffectiveWeight(moving);
     walk.setEffectiveTimeScale(Math.min(1.3,speed/.83));
     mixer.update(dt);
