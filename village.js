@@ -334,6 +334,14 @@ export function addVillage(scene, ctx) {
     }
   }
 
+  // 호수/물고기/유빙 전용 독립 난수기 (기존 마을·산타 배치 시드 보존)
+  let lakeSeed = 1234567;
+  const lakeRng = () => {
+    lakeSeed = (lakeSeed * 16807) % 2147483647;
+    return (lakeSeed - 1) / 2147483646;
+  };
+  const lakeRand = (a, b) => a + (b - a) * lakeRng();
+
   // 🌊 [어두운 심해 착시 바닥 + 에메랄드 수면]
   const lakeCenterY = heightAt(hub.x, hub.z) + 0.32;
   const pondVerts = [0, lakeCenterY, 0];
@@ -349,10 +357,47 @@ export function addVillage(scene, ctx) {
     pondVerts.push(lx, lakeCenterY, lz);
     basinVerts.push(lx, lakeCenterY - 0.08, lz);
 
-    const wx = hub.x + Math.cos(a) * 4 * wobble;
-    const wz = hub.z + Math.sin(a) * 3 * wobble;
-    instance(sphere, snow, wx, lakeCenterY + 0.02, wz, 0.43, 0.22, 0.32, a);
+    // 1. 약 25% 구간은 건너뛰어 눈이 녹은 자연스러운 해안선 틈 생성
+    if (lakeRng() > 0.25) {
+      const rOffset = lakeRand(3.92, 4.18) * wobble;
+      const rzOffset = lakeRand(2.92, 3.18) * wobble;
+      const wx = hub.x + Math.cos(a) * rOffset;
+      const wz = hub.z + Math.sin(a) * rzOffset;
 
+      // 2. 가끔 눈덩이 대신 회색 바위나 얼음 조각을 섞어 배치
+      const decoRoll = lakeRng();
+      if (decoRoll < 0.14) {
+        instance(sphere, stone, wx, lakeCenterY + lakeRand(-0.02, 0.03), wz, lakeRand(0.28, 0.52), lakeRand(0.14, 0.26), lakeRand(0.25, 0.45), lakeRand(0, TAU));
+      } else if (decoRoll < 0.24) {
+        instance(box, ice, wx, lakeCenterY + 0.01, wz, lakeRand(0.35, 0.65), lakeRand(0.12, 0.22), lakeRand(0.3, 0.55), lakeRand(0, TAU));
+      } else {
+        // 3. 눈덩이 크기를 불규칙하게 변형
+        instance(sphere, snow, wx, lakeCenterY + lakeRand(0.0, 0.04), wz, lakeRand(0.28, 0.62), lakeRand(0.14, 0.30), lakeRand(0.25, 0.52), lakeRand(0, TAU));
+      }
+    }
+
+// 🪨 [오른쪽 아래 & 오른쪽 위 빈틈 두 군데를 막아주는 보강 돌·눈덩이]
+  const patchAngles = [
+    // 1. 오른쪽 아래 구간 (기존 보강)
+    0.42, 0.56, 0.70, 0.84, 0.96,
+    // 2. 오른쪽 위 표시한 두 군데 빈틈 보강 (-z, +x 방향)
+    -1.08, -0.92, -0.58, -0.42
+  ];
+
+  patchAngles.forEach((a, idx) => {
+    const wobble = 1 + 0.07 * Math.sin(a * 3 + 0.8) + 0.035 * Math.sin(a * 7);
+    const wx = hub.x + Math.cos(a) * 3.85 * wobble;
+    const wz = hub.z + Math.sin(a) * 2.85 * wobble;
+
+    if (idx % 2 === 1) {
+      // 어두운 돌을 섞어 자연스러운 대비 연출
+      instance(sphere, stone, wx, lakeCenterY + 0.01, wz, 0.44, 0.21, 0.38, a * 2);
+    } else {
+      // 눈덩이로 수면 경계선 밀착
+      instance(sphere, snow, wx, lakeCenterY + 0.02, wz, 0.48, 0.23, 0.42, a * 1.5);
+    }
+  });
+  
     const next = ((i + 1) % ringCount) + 1;
     pondIndices.push(0, next, i + 1);
   }
@@ -362,7 +407,7 @@ export function addVillage(scene, ctx) {
   basinGeo.setIndex(pondIndices);
   basinGeo.computeVertexNormals();
   const basinMesh = new THREE.Mesh(basinGeo, new THREE.MeshStandardMaterial({
-    color: 0x1d5d7a,  // 기존의 어두운 청록(0x0d384c)에서 밝고 푸른 빙하 바닥 톤으로 변경
+    color: 0x1d5d7a,
     roughness: 0.8,
     metalness: 0.05
   }));
@@ -380,11 +425,11 @@ export function addVillage(scene, ctx) {
   for (let i = 0; i < lakePosAttr.count; i++) baseWaterY[i] = lakePosAttr.getY(i);
 
   const lakeMat = new THREE.MeshStandardMaterial({
-    color: 0x38bdf8,  // 맑고 화사한 스카이 블루 톤
+    color: 0x38bdf8,
     roughness: 0.05,
     metalness: 0.2,
     transparent: true,
-    opacity: 0.45,    // 기존 0.68에서 0.45로 낮춰 속이 시원하게 비치도록 투명도 증가
+    opacity: 0.45,
     depthWrite: false
   });
 
@@ -528,17 +573,107 @@ export function addVillage(scene, ctx) {
   bobber.add(bBot);
   root.add(bobber);
 
-// 🐟 [GLB 5종 물고기 로드 & 수영 애니메이션 자동 탐색]
+  // 🌊 [낚시 찌 파문(Ripple) & 입질 상태 관리]
+  const ripples = [];
+  const rippleGeo = new THREE.RingGeometry(0.03, 0.055, 24);
+  rippleGeo.rotateX(-Math.PI / 2);
+
+  function spawnRipple(rx, rz, maxScale = 3.2) {
+    const rMat = new THREE.MeshBasicMaterial({
+      color: 0xe0f7ff,
+      transparent: true,
+      opacity: 0.75,
+      depthWrite: false
+    });
+    const mesh = new THREE.Mesh(rippleGeo, rMat);
+    mesh.position.set(rx, lakeCenterY + 0.015, rz);
+    mesh.renderOrder = 4;
+    root.add(mesh);
+    ripples.push({ mesh, age: 0, maxAge: 1.4, maxScale });
+  }
+
+  let bobberVelY = 0;
+  let bobberOffsetY = 0;
+  let nextNibbleCooldown = 4.0;
+
+  // 🧊 [호수 오른쪽 수면 위 떠다니는 작은 유빙(얼음판) 3개]
+  const iceFloes = [];
+  const floeMat = new THREE.MeshStandardMaterial({
+    color: 0xdcf4ff,
+    roughness: 0.25,
+    metalness: 0.1
+  });
+  const floeRimMat = new THREE.MeshStandardMaterial({
+    color: 0x89cde6,
+    roughness: 0.35
+  });
+
+  const floeSpecs = [
+    { offsetX: 1.45, offsetZ: -0.85, radius: 0.42, sides: 6 },
+    { offsetX: 2.55, offsetZ: 0.15,  radius: 0.34, sides: 5 },
+    { offsetX: 1.50, offsetZ: 0.95,  radius: 0.28, sides: 7 }
+  ];
+
+  floeSpecs.forEach((spec, idx) => {
+    const floeGroup = new THREE.Group();
+
+    const topGeo = new THREE.CylinderGeometry(spec.radius, spec.radius * 1.05, 0.035, spec.sides);
+    const baseGeo = new THREE.CylinderGeometry(spec.radius * 1.05, spec.radius * 0.85, 0.035, spec.sides);
+
+    [topGeo, baseGeo].forEach(geo => {
+      const pos = geo.attributes.position;
+      for (let v = 0; v < pos.count; v++) {
+        const vx = pos.getX(v);
+        const vz = pos.getZ(v);
+        const angle = Math.atan2(vz, vx);
+        const jag = 1 + 0.18 * Math.sin(angle * 3 + idx * 2.1) + 0.1 * Math.cos(angle * 5);
+        pos.setX(v, vx * jag);
+        pos.setZ(v, vz * jag);
+      }
+      geo.computeVertexNormals();
+    });
+
+    const topMesh = new THREE.Mesh(topGeo, floeMat);
+    topMesh.position.y = 0.015;
+    topMesh.castShadow = true;
+    topMesh.receiveShadow = true;
+    topMesh.renderOrder = 5;
+
+    const baseMesh = new THREE.Mesh(baseGeo, floeRimMat);
+    baseMesh.position.y = -0.015;
+    baseMesh.renderOrder = 4;
+
+    floeGroup.add(topMesh);
+    floeGroup.add(baseMesh);
+
+    const baseX = hub.x + spec.offsetX;
+    const baseZ = hub.z + spec.offsetZ;
+    floeGroup.position.set(baseX, lakeCenterY + 0.005, baseZ);
+    floeGroup.rotation.y = lakeRand(0, TAU);
+    root.add(floeGroup);
+
+    iceFloes.push({
+      group: floeGroup,
+      radius: spec.radius,
+      baseX,
+      baseZ,
+      phase: idx * 2.1,
+      driftRadiusX: lakeRand(0.12, 0.22),
+      driftRadiusZ: lakeRand(0.10, 0.18),
+      rotSpeed: (idx % 2 === 0 ? 1 : -1) * lakeRand(0.04, 0.08)
+    });
+  });
+
+  // 🐟 [GLTF 로더 & 5종 물고기 설정]
   const fishes = [];
   const gltfLoader = new GLTFLoader();
 
-  // 크기를 호수 비율에 맞게 대폭 축소 (0.06 ~ 0.08)
   const fishConfigs = [
-    { file: 'Goldfish.glb', scale: 0.12 },
-    { file: 'Koi.glb', scale: 0.14 },
-    { file: 'Parrot Fish.glb', scale: 0.14 },
-    { file: 'Red Snapper.glb', scale: 0.13 },
-    { file: 'Tetra.glb', scale: 0.14 }
+    { file: 'Goldfish.glb', scale: 0.105 },
+    { file: 'Koi.glb', scale: 0.10 },
+    { file: 'Parrot Fish.glb', scale: 0.095 },
+    { file: 'Red Snapper.glb', scale: 0.10 },
+    { file: 'Tetra.glb', scale: 0.11 }
   ];
 
   function getLakeNormalizedDist(x, z) {
@@ -552,12 +687,17 @@ export function addVillage(scene, ctx) {
 
   function getRandomLakePoint() {
     for (let tryCount = 0; tryCount < 20; tryCount++) {
-      const ang = rand(0, TAU);
-      const rRatio = Math.sqrt(rng()) * 0.58;
+      const ang = lakeRand(0, TAU);
+      const rRatio = Math.sqrt(lakeRng()) * 0.72;
       const wobble = 1 + 0.07 * Math.sin(ang * 3 + 0.8) + 0.035 * Math.sin(ang * 7);
       const px = hub.x + Math.cos(ang) * 3.8 * wobble * rRatio;
       const pz = hub.z + Math.sin(ang) * 2.8 * wobble * rRatio;
-      if (Math.hypot(px - deckX, pz - deckZ) > 1.3) {
+
+      const nearFloe = iceFloes.some(
+        floe => Math.hypot(px - floe.group.position.x, pz - floe.group.position.z) < floe.radius + 0.35
+      );
+
+      if (Math.hypot(px - deckX, pz - deckZ) > 0.9 && !nearFloe) {
         return { x: px, z: pz };
       }
     }
@@ -577,7 +717,6 @@ export function addVillage(scene, ctx) {
           if (child.material) {
             child.material.roughness = 0.2;
             child.material.metalness = 0.1;
-            // 물속에서 묻히지 않도록 자기 색으로 살짝 밝힘
             if (child.material.color) {
               child.material.emissive = child.material.color;
               child.material.emissiveIntensity = 0.25;
@@ -586,18 +725,15 @@ export function addVillage(scene, ctx) {
         }
       });
 
-      // 'Swim' 또는 'Idle' 애니메이션 클립을 우선 찾아 재생
       let mixer = null;
       if (gltf.animations && gltf.animations.length > 0) {
         mixer = new THREE.AnimationMixer(model);
-
-        // 애니메이션 클립 이름 로그 확인 및 Swim 모션 탐색
-        const swimClip = gltf.animations.find(clip => 
+        const swimClip = gltf.animations.find(clip =>
           /swim|walk|run|idle/i.test(clip.name) && !/death|die|dead/i.test(clip.name)
         ) || (gltf.animations.length > 1 ? gltf.animations[1] : gltf.animations[0]);
 
         const action = mixer.clipAction(swimClip);
-        action.timeScale = 1.0 + rand(-0.2, 0.2);
+        action.timeScale = 1.0 + lakeRand(-0.2, 0.2);
         action.play();
       }
 
@@ -606,7 +742,6 @@ export function addVillage(scene, ctx) {
       const startPt = getRandomLakePoint();
       const targetPt = getRandomLakePoint();
       const initYaw = Math.atan2(targetPt.x - startPt.x, targetPt.z - startPt.z);
-      // 수면 아래로 충분히 잠기도록 수심 조정
       const swimDepth = lakeCenterY - 0.06 - (i * 0.012);
 
       fishes.push({
@@ -624,10 +759,10 @@ export function addVillage(scene, ctx) {
         pitch: 0,
         roll: 0,
         speed: 0,
-        maxSpeed: rand(0.012, 0.018),
+        maxSpeed: lakeRand(0.012, 0.018),
         isHovering: false,
-        pauseTimer: rand(1.0, 2.5),
-        swimPhase: rand(0, TAU)
+        pauseTimer: lakeRand(1.0, 2.5),
+        swimPhase: lakeRand(0, TAU)
       });
     }, undefined, err => {
       console.warn(`물고기 로드 실패 (${cfg.file}):`, err.message);
@@ -645,6 +780,190 @@ export function addVillage(scene, ctx) {
     : findSpot(1.4, 6.3, 9.5) || findSpot(1.4, 7, 28);
   const wavingSantaSpot = fireSpot && { x: fireSpot.x + 2.35, z: fireSpot.z + 0.2, r: 1.25 };
   if (wavingSantaSpot) occupied.push(wavingSantaSpot);
+
+ // ⛄ [눈사람 GLB 모델 배치 — 눈밭 밀착 & 모닥불/산타 구역 완전 분리]
+  const snowmanFileName = 'Snowman.glb';
+  const snowmanSpots = [
+    { x: hub.x + 4.8, z: hub.z - 4.2, scale: 0.011, yaw: -0.5 }, // 호수 오른쪽 뒤편
+    { x: hub.x - 4.8, z: hub.z - 3.6, scale: 0.010, yaw: 0.6 }   // 호수 왼쪽 뒤편
+  ];
+
+  snowmanSpots.forEach(spot => {
+    occupied.push({ x: spot.x, z: spot.z, r: 0.65 });
+    gltfLoader.load(`./assets/${snowmanFileName}`, gltf => {
+      const snowman = gltf.scene;
+      snowman.scale.set(spot.scale, spot.scale, spot.scale);
+
+      snowman.updateMatrixWorld(true);
+      const box3 = new THREE.Box3().setFromObject(snowman);
+      // 공중에 뜨지 않고 눈밭에 푹신하게 파묻히도록 -0.22 보정
+      const groundY = heightAt(spot.x, spot.z) - 0.22;
+      snowman.position.set(spot.x, groundY - box3.min.y, spot.z);
+      snowman.rotation.y = spot.yaw;
+
+      snowman.traverse(child => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
+
+      root.add(snowman);
+    }, undefined, err => {
+      console.warn(`눈사람 로드 실패 (${snowmanFileName}):`, err.message);
+    });
+  });
+
+// 🎁 [눈사람 옆 선물 꾸러미 장식]
+  const giftBoxMats = [
+    mat(0xc83737, 0.45), // 클래식 레드
+    mat(0x2a6f4b, 0.45), // 포레스트 그린
+    mat(0xd99b26, 0.40)  // 웜 골드
+  ];
+  const ribbonMat = mat(0xf7e396, 0.3, { metalness: 0.35 });
+
+  function createGiftBox(gx, gy, gz, w, h, d, yaw, boxMat) {
+    const gift = new THREE.Group();
+    gift.position.set(gx, gy, gz);
+    gift.rotation.y = yaw;
+
+    // 상자 본체
+    const body = new THREE.Mesh(box, boxMat);
+    body.scale.set(w, h, d);
+    body.position.y = h * 0.5;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    gift.add(body);
+
+    // 십자 리본 띠 (가로 + 세로)
+    const rib1 = new THREE.Mesh(box, ribbonMat);
+    rib1.scale.set(w + 0.015, h + 0.015, Math.min(w, d) * 0.22);
+    rib1.position.y = h * 0.5;
+    gift.add(rib1);
+
+    const rib2 = new THREE.Mesh(box, ribbonMat);
+    rib2.scale.set(Math.min(w, d) * 0.22, h + 0.015, d + 0.015);
+    rib2.position.y = h * 0.5;
+    gift.add(rib2);
+
+    // 상단 리본 매듭 장식
+    const bow = new THREE.Mesh(new THREE.TorusGeometry(Math.min(w, d) * 0.16, 0.018, 5, 10), ribbonMat);
+    bow.position.y = h + 0.025;
+    bow.rotation.x = Math.PI * 0.35;
+    gift.add(bow);
+
+    root.add(gift);
+  }
+
+  snowmanSpots.forEach((spot, idx) => {
+    // 눈사람 발밑 지면 높이 계산 (눈 지면 surface 높이 기준)
+    const baseGroundY = heightAt(spot.x, spot.z) + 0.12;
+    const dir = idx === 0 ? 1 : -1;
+
+    // 1. 큰 빨간 선물 상자 (눈사람 바로 옆)
+    const b1x = spot.x + 0.58 * dir;
+    const b1z = spot.z + 0.22;
+    createGiftBox(b1x, baseGroundY, b1z, 0.34, 0.28, 0.34, 0.35 * dir, giftBoxMats[0]);
+
+    // 2. 그 위에 2단으로 얹은 작은 황금 상자
+    createGiftBox(b1x, baseGroundY + 0.28, b1z, 0.21, 0.18, 0.21, -0.4 * dir, giftBoxMats[2]);
+
+    // 3. 앞쪽에 비스듬히 놓인 초록 선물 상자
+    const b2x = spot.x + 0.32 * dir;
+    const b2z = spot.z + 0.52;
+    createGiftBox(b2x, baseGroundY, b2z, 0.26, 0.22, 0.24, 0.85 * dir, giftBoxMats[1]);
+  });
+
+// 🍬🕯️ [눈사람 & 선물 꾸러미 주변 지팡이 사탕(Candy Cane) + 작은 랜턴 조명]
+  const caneWhiteMat = mat(0xf8fafc, 0.3);
+  const caneRedMat = mat(0xdc2626, 0.3);
+  const warmOrbMat = new THREE.MeshStandardMaterial({
+    color: 0xffdf91,
+    emissive: 0xff9d2e,
+    emissiveIntensity: 2.0,
+    roughness: 0.15
+  });
+
+  function createCandyCane(cx, cy, cz, scale = 1.0, yaw = 0, tiltZ = 0.08) {
+    const cane = new THREE.Group();
+    cane.position.set(cx, cy, cz);
+    cane.rotation.set(0, yaw, tiltZ);
+    cane.scale.set(scale, scale, scale);
+
+    // 1. 직선 기둥 줄무늬 (빨강/하양 교차 6마디)
+    const segCount = 6;
+    const segH = 0.085;
+    for (let i = 0; i < segCount; i++) {
+      const seg = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.024, 0.024, segH, 10),
+        i % 2 === 0 ? caneWhiteMat : caneRedMat
+      );
+      seg.position.y = (i + 0.5) * segH;
+      seg.castShadow = true;
+      cane.add(seg);
+    }
+
+    // 2. 상단 지팡이 손잡이 곡선 (4조각 아치)
+    const topY = segCount * segH;
+    const hookR = 0.075;
+    const arcSteps = 4;
+    for (let i = 0; i < arcSteps; i++) {
+      const a0 = (i / arcSteps) * Math.PI;
+      const a1 = ((i + 1) / arcSteps) * Math.PI;
+      const arcSeg = new THREE.Mesh(
+        new THREE.TorusGeometry(hookR, 0.024, 8, 8, a1 - a0),
+        i % 2 === 0 ? caneWhiteMat : caneRedMat
+      );
+      arcSeg.position.set(-hookR, topY, 0);
+      arcSeg.rotation.z = a0;
+      arcSeg.castShadow = true;
+      cane.add(arcSeg);
+    }
+
+    root.add(cane);
+  }
+
+  function createMiniSnowLamp(lx, ly, lz) {
+    const lampGroup = new THREE.Group();
+    lampGroup.position.set(lx, ly, lz);
+
+    // 어두운 금속 받침대
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.08, 0.04, 10), metal);
+    base.position.y = 0.02;
+    lampGroup.add(base);
+
+    // 따뜻한 빛을 내는 유리 구체
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), warmOrbMat);
+    bulb.position.y = 0.085;
+    lampGroup.add(bulb);
+
+    // 상단 미니 갓
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.05, 10), metal);
+    cap.position.y = 0.145;
+    lampGroup.add(cap);
+
+    // 눈사람과 선물 상자를 은은하게 비추는 소형 포인트 라이트
+    const glow = new THREE.PointLight(0xffb454, 1.4, 2.8, 1.8);
+    glow.position.y = 0.12;
+    lampGroup.add(glow);
+
+    root.add(lampGroup);
+  }
+
+  snowmanSpots.forEach((spot, idx) => {
+    const baseGroundY = heightAt(spot.x, spot.z) + 0.12;
+    const dir = idx === 0 ? 1 : -1;
+
+    // 눈사람 반대편 곁에 큰 지팡이 사탕 1개
+    createCandyCane(spot.x - 0.52 * dir, baseGroundY, spot.z + 0.18, 1.15, 0.4 * dir, -0.1 * dir);
+
+    // 선물 상자 바깥쪽에 작은 지팡이 사탕 1개
+    createCandyCane(spot.x + 0.85 * dir, baseGroundY, spot.z + 0.05, 0.88, -0.7 * dir, 0.12 * dir);
+
+    // 눈사람과 선물 꾸러미 앞쪽에 작은 랜턴 조명 배치
+    createMiniSnowLamp(spot.x + 0.12 * dir, baseGroundY, spot.z + 0.68);
+  });
+
   let fireLight = null;
   if (fireSpot) {
     const { x, z } = fireSpot, y = heightAt(x, z);
@@ -824,7 +1143,7 @@ export function addVillage(scene, ctx) {
     boardSpot,
     wavingSantaSpot,
     walkingObstacles: [
-      ...occupied.map(o => ({ ...o })),
+      ...occupied.filter(o => o !== wavingSantaSpot).map(o => ({ ...o })),
       { x: hub.x, z: hub.z, r: 5.1 },
       { x: deckX, z: deckZ, r: 1.4 },
       ...(lighthouse ? [{ x: lighthouse.x, z: lighthouse.z, r: lighthouse.radius + 0.5 }] : []),
@@ -876,9 +1195,67 @@ export function addVillage(scene, ctx) {
         lakeGeo.computeVertexNormals();
       }
 
-      bobber.position.y = lakeCenterY + 0.018 + Math.sin(timeSeconds * 2.6 + 0.5) * 0.012;
+      // 🎣 찌 물리 출렁임 & 낚싯줄 끝점 동기화
+      const springForce = -bobberOffsetY * 18.0;
+      bobberVelY += springForce * 0.016;
+      bobberVelY *= 0.90;
+      bobberOffsetY += bobberVelY * 0.016;
 
-      // 🐟 자연스러운 물고기 자율 유영 AI & GLB 애니메이션 갱신
+      const idleWave = Math.sin(timeSeconds * 2.6 + 0.5) * 0.012;
+      bobber.position.y = lakeCenterY + 0.018 + idleWave + bobberOffsetY;
+
+      // 🧊 유빙 물결 부유(Bobbing), 미세 회전 및 느린 제자리 표류
+      for (let i = 0; i < iceFloes.length; i++) {
+        const floe = iceFloes[i];
+        const t = timeSeconds * 0.45 + floe.phase;
+
+        floe.group.position.x = floe.baseX + Math.sin(t * 0.7) * floe.driftRadiusX;
+        floe.group.position.z = floe.baseZ + Math.cos(t * 0.55) * floe.driftRadiusZ;
+
+        floe.group.position.y = lakeCenterY + 0.006 + Math.sin(timeSeconds * 2.3 + floe.phase) * 0.009;
+        floe.group.rotation.x = Math.sin(timeSeconds * 1.9 + floe.phase) * 0.035;
+        floe.group.rotation.z = Math.cos(timeSeconds * 2.1 + floe.phase) * 0.035;
+        floe.group.rotation.y += floe.rotSpeed * 0.016;
+      }
+
+      // 낚싯줄 끝 좌표를 찌 움직임에 맞춰 갱신
+      const currentBobberTip = new THREE.Vector3(bobber.position.x, bobber.position.y + 0.035, bobber.position.z);
+      const currentMid = new THREE.Vector3(
+        (tipPos.x + currentBobberTip.x) * 0.5,
+        Math.min(tipPos.y, currentBobberTip.y) + 0.14 + bobberOffsetY * 0.5,
+        (tipPos.z + currentBobberTip.z) * 0.5
+      );
+      lineGeo.setFromPoints(new THREE.QuadraticBezierCurve3(tipPos, currentMid, currentBobberTip).getPoints(16));
+
+      // 🌊 수면 동심원 파문 확산 & 소멸 애니메이션
+      for (let i = ripples.length - 1; i >= 0; i--) {
+        const rp = ripples[i];
+        rp.age += 0.016;
+        const progress = rp.age / rp.maxAge;
+        if (progress >= 1) {
+          root.remove(rp.mesh);
+          rp.mesh.material.dispose();
+          ripples.splice(i, 1);
+        } else {
+          const s = 1 + progress * rp.maxScale;
+          rp.mesh.scale.set(s, 1, s);
+          rp.mesh.material.opacity = (1 - progress) * 0.65;
+        }
+      }
+
+      // 입질 이벤트 쿨다운 및 대상 물고기 지정
+      if (nextNibbleCooldown > 0) {
+        nextNibbleCooldown -= 0.016;
+      } else if (fishes.length > 0 && !fishes.some(f => f.isNibbling)) {
+        const candidate = fishes[Math.floor(lakeRng() * fishes.length)];
+        candidate.isNibbling = true;
+        candidate.targetX = bobberPos.x;
+        candidate.targetZ = bobberPos.z;
+        candidate.targetDepth = lakeCenterY - 0.05;
+        candidate.pauseTimer = 0;
+      }
+
+      // 🐟 자연스러운 물고기 자율 유영 AI (입질 및 개체 간 겹침 방지 포함)
       for (let i = 0; i < fishes.length; i++) {
         const f = fishes[i];
         const dt = 0.016;
@@ -887,11 +1264,49 @@ export function addVillage(scene, ctx) {
           f.mixer.update(dt);
         }
 
-        if (f.pauseTimer > 0) {
+        let sepX = 0;
+        let sepZ = 0;
+        if (!f.isNibbling) {
+          for (let j = 0; j < fishes.length; j++) {
+            if (i === j) continue;
+            const other = fishes[j];
+            const dx = f.x - other.x;
+            const dz = f.z - other.z;
+            const d = Math.hypot(dx, dz);
+            if (d > 0.001 && d < 0.75) {
+              const push = (0.75 - d) / 0.75;
+              sepX += (dx / d) * push;
+              sepZ += (dz / d) * push;
+            }
+          }
+        }
+
+        if (f.isNibbling) {
+          f.speed = THREE.MathUtils.lerp(f.speed, 0.022, 0.06);
+          const dx = bobberPos.x - f.x;
+          const dz = bobberPos.z - f.z;
+          const distToBobber = Math.hypot(dx, dz);
+          f.targetYaw = Math.atan2(dx, dz);
+
+          if (distToBobber < 0.28) {
+            bobberVelY = -0.35;
+            spawnRipple(bobberPos.x, bobberPos.z, 3.6);
+            setTimeout(() => spawnRipple(bobberPos.x, bobberPos.z, 2.4), 220);
+
+            f.isNibbling = false;
+            nextNibbleCooldown = lakeRand(6.0, 12.0);
+
+            const escape = getRandomLakePoint();
+            f.targetX = escape.x;
+            f.targetZ = escape.z;
+            f.targetDepth = f.baseDepth;
+          }
+        } else if (f.pauseTimer > 0 && Math.hypot(sepX, sepZ) < 0.1) {
           f.pauseTimer -= dt;
           f.isHovering = true;
           f.speed = THREE.MathUtils.lerp(f.speed, 0, 0.06);
         } else {
+          f.pauseTimer = 0;
           f.isHovering = false;
           f.speed = THREE.MathUtils.lerp(f.speed, f.maxSpeed, 0.04);
 
@@ -899,37 +1314,59 @@ export function addVillage(scene, ctx) {
           const dz = f.targetZ - f.z;
           const dist = Math.hypot(dx, dz);
 
-          if (dist < 0.45 || getLakeNormalizedDist(f.x, f.z) > 0.75) {
+          if (dist < 0.45 || getLakeNormalizedDist(f.x, f.z) > 0.78) {
             const next = getRandomLakePoint();
             f.targetX = next.x;
             f.targetZ = next.z;
-            f.targetDepth = f.baseDepth + rand(-0.015, 0.015);
-            f.maxSpeed = rand(0.014, 0.02);
-            if (rng() < 0.3) f.pauseTimer = rand(1.5, 3.2);
+            f.targetDepth = f.baseDepth + lakeRand(-0.012, 0.012);
+            f.maxSpeed = lakeRand(0.014, 0.02);
+            if (lakeRng() < 0.25) f.pauseTimer = lakeRand(1.5, 3.0);
           }
 
-          f.targetYaw = Math.atan2(f.targetX - f.x, f.targetZ - f.z);
+          const goalDirX = (f.targetX - f.x) / (dist || 1);
+          const goalDirZ = (f.targetZ - f.z) / (dist || 1);
+          f.targetYaw = Math.atan2(goalDirX + sepX * 1.4, goalDirZ + sepZ * 1.4);
         }
 
         let diff = f.targetYaw - f.yaw;
         while (diff < -Math.PI) diff += Math.PI * 2;
         while (diff > Math.PI) diff -= Math.PI * 2;
-        f.yaw += THREE.MathUtils.clamp(diff * 0.06, -0.04, 0.04);
+        f.yaw += THREE.MathUtils.clamp(diff * 0.06, -0.05, 0.05);
 
         const moveDist = f.speed;
         const nextX = f.x + Math.sin(f.yaw) * moveDist;
         const nextZ = f.z + Math.cos(f.yaw) * moveDist;
 
-        if (getLakeNormalizedDist(nextX, nextZ) < 0.78) {
+        if (f.isNibbling || getLakeNormalizedDist(nextX, nextZ) < 0.80) {
           f.x = nextX;
           f.z = nextZ;
         } else {
-          f.targetX = hub.x + rand(-0.5, 0.5);
-          f.targetZ = hub.z + rand(-0.5, 0.5);
+          f.targetX = hub.x + lakeRand(-0.8, 0.8);
+          f.targetZ = hub.z + lakeRand(-0.8, 0.8);
           f.targetYaw = Math.atan2(hub.x - f.x, hub.z - f.z);
         }
 
-        f.y = THREE.MathUtils.lerp(f.y, f.targetDepth, 0.02);
+        // 🧊 [유빙 물리적 침범 원천 차단]
+        for (let k = 0; k < iceFloes.length; k++) {
+          const floe = iceFloes[k];
+          const dx = f.x - floe.group.position.x;
+          const dz = f.z - floe.group.position.z;
+          const d = Math.hypot(dx, dz);
+          const minClearDist = floe.radius + 0.55;
+          if (d < minClearDist) {
+            const nx = d > 0.001 ? dx / d : 1;
+            const nz = d > 0.001 ? dz / d : 0;
+            f.x = floe.group.position.x + nx * minClearDist;
+            f.z = floe.group.position.z + nz * minClearDist;
+
+            if (!f.isNibbling) {
+              f.targetX = hub.x - 1.2 + lakeRand(-0.6, 0.6);
+              f.targetZ = hub.z + lakeRand(-1.0, 1.0);
+            }
+          }
+        }
+
+        f.y = THREE.MathUtils.lerp(f.y, f.targetDepth, 0.03);
         const targetPitch = THREE.MathUtils.clamp((f.targetDepth - f.y) * 3.5, -0.3, 0.3);
         f.pitch = THREE.MathUtils.lerp(f.pitch, targetPitch, 0.05);
         f.roll = THREE.MathUtils.lerp(f.roll, -diff * 0.35, 0.06);
