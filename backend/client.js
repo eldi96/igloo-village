@@ -120,6 +120,20 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
       return unwrap(await api.from('members').select('id,display_name,role,approved').eq('id', data.user.id).maybeSingle());
     },
     async currentUser() { const api = await ready(); return (await api.auth.getUser()).data.user; },
+    async passwordReset(action, fields = {}) {
+      const headers = { 'Content-Type': 'application/json' };
+      if (['list', 'issue', 'reject'].includes(action)) {
+        const { api } = await requireMember();
+        const { data, error } = await api.auth.getSession();
+        if (error || !data.session?.access_token) throw new Error('다시 로그인해주세요.');
+        headers.Authorization = `Bearer ${data.session.access_token}`;
+      }
+      const response = await fetch('/api/password-reset', { method: 'POST', headers, body: JSON.stringify({ ...fields, action }) });
+      let result;
+      try { result = await response.json(); } catch { throw new Error('초기화 서버가 준비되지 않았어요. 관리자에게 직접 문의해 주세요.'); }
+      if (!response.ok) throw new Error(result.error || '처리하지 못했어요. 다시 시도해 주세요.');
+      return result;
+    },
     async signIn(id, password) {
       const api = await ready();
       return unwrap(await api.auth.signInWithPassword({ email: idToEmail(id), password }));
