@@ -149,3 +149,5 @@ rollback;
 -- 댓글·우편 공개 점등과 우편 내용 격리는 verify-mailbox-mail-glow.sql의 롤백 시험으로 확인.
 
 -- 강사 초대 역할/1회 사용/만료/기존 역할 보존: verify-instructor-invites.sql (rollback)
+
+-- 관리자 확인형 초기화는 verify-password-reset.sql의 독립 롤백 시험으로 검증한다.

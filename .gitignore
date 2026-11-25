@@ -14,3 +14,9 @@ $RECYCLE.BIN/
 
 # Local MCP configuration
 .mcp.json
+
+# Server-only local configuration
+.env
+.env.*
+!.env.example
+.vercel/

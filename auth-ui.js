@@ -1,12 +1,13 @@
+import { createPasswordResetUi, PASSWORD_RESET_ADMIN_ID } from './password-reset-ui.js?v=reset1';
 // 로그인 버튼과 로그인 창. 권한 판단은 DB가 하고, 여기서는 상태만 보여준다.
 const STYLE = `
-  .auth-chip { position: fixed; z-index: 3; left: 24px; top: 20px; display: flex; align-items: center; gap: 10px; color: #e6eef4; font: 500 13px/1.4 "Segoe UI", "Malgun Gothic", system-ui, sans-serif; text-shadow: 0 1px 6px rgba(0,0,0,.7); }
+  .auth-chip { position: fixed; z-index: 3; left: 24px; top: 20px; display: flex; flex-wrap: wrap; max-width: calc(100vw - 32px); align-items: center; gap: 10px; color: #e6eef4; font: 500 13px/1.4 "Segoe UI", "Malgun Gothic", system-ui, sans-serif; text-shadow: 0 1px 6px rgba(0,0,0,.7); }
   .auth-chip button { min-height: 36px; padding: 7px 14px; border: 1px solid rgba(232,242,249,.28); border-radius: 9px; background: rgba(9,22,34,.5); color: #edf4f8; font: inherit; cursor: pointer; backdrop-filter: blur(8px); touch-action: manipulation; }
   .auth-chip .auth-name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .auth-chip button:focus-visible, .auth-card button:focus-visible { outline: 2px solid #edf6ff; outline-offset: 3px; }
   .auth-veil { position: fixed; z-index: 10; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(3,10,18,.46); animation: auth-in 180ms ease-out; }
   .auth-veil[hidden] { display: none; }
-  .auth-card { box-sizing: border-box; width: min(360px, 100%); padding: 30px 28px 24px; border: 1px solid rgba(224,239,250,.14); border-radius: 18px; background: rgba(9,22,34,.92); box-shadow: 0 18px 60px rgba(0,7,15,.45), inset 0 1px rgba(255,255,255,.04); color: #e9f1f6; font: 400 14px/1.55 "Segoe UI", "Malgun Gothic", system-ui, sans-serif; text-align: center; backdrop-filter: blur(10px); animation: auth-up 220ms cubic-bezier(.16,1,.3,1); }
+  .auth-card { max-height: calc(100dvh - 40px); overflow-y: auto; word-break: keep-all; overflow-wrap: anywhere; box-sizing: border-box; width: min(360px, 100%); padding: 30px 28px 24px; border: 1px solid rgba(224,239,250,.14); border-radius: 18px; background: rgba(9,22,34,.92); box-shadow: 0 18px 60px rgba(0,7,15,.45), inset 0 1px rgba(255,255,255,.04); color: #e9f1f6; font: 400 14px/1.55 "Segoe UI", "Malgun Gothic", system-ui, sans-serif; text-align: center; backdrop-filter: blur(10px); animation: auth-up 220ms cubic-bezier(.16,1,.3,1); }
   .auth-card h2 { margin: 0 0 8px; font-size: 19px; font-weight: 500; letter-spacing: -.01em; }
   .auth-card p { margin: 0; color: #b5c4cf; text-wrap: balance; }
   .auth-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 22px; }
@@ -48,6 +49,8 @@ export function mountAuth(backend, { onChange = () => {} } = {}) {
   document.body.append(chip, veil);
 
   let user = null, member = null, opener = null, checked = false, busy = false;
+  const resetUi = createPasswordResetUi(backend, { onLogin: () => openLogin() });
+  const openReset = method => () => { close(); resetUi[method](); };
 
   const button = (label, onClick, className = '') => {
     const b = document.createElement('button');
@@ -133,7 +136,7 @@ export function mountAuth(backend, { onChange = () => {} } = {}) {
     showForm('이글루 마을에 들어가기', '로그인하면 내 이글루를 정하고 프로젝트를 올릴 수 있어요.', [
       field('아이디', 'id', { autocomplete: 'username', autocapitalize: 'none', spellcheck: false }),
       field('비밀번호', 'password', { type: 'password', autocomplete: 'current-password' })
-    ], '로그인', data => backend.signIn(data.get('id'), data.get('password')), [button('처음이에요', openSignUp), button('둘러보기', close)]);
+    ], '로그인', data => backend.signIn(data.get('id'), data.get('password')), [button('비밀번호 초기화 요청', openReset('openRequest')), button('임시 비밀번호로 변경', openReset('openRedeem')), button('처음이에요', openSignUp), button('둘러보기', close)]);
   }
   function openSignUp() {
     showForm('이글루 마을 가입', '강의실에서 받은 초대 코드가 필요해요.', [
@@ -170,9 +173,11 @@ export function mountAuth(backend, { onChange = () => {} } = {}) {
     name.className = 'auth-name';
     name.textContent = member?.display_name || user.email?.split('@')[0] || '로그인됨';
     chip.append(name, button('로그아웃', signOut));
+    if (member?.approved && member.id === PASSWORD_RESET_ADMIN_ID) chip.append(button('초기화 요청 관리', openReset('openAdmin')));
   }
   async function applyUser(next) {
     const changed = next?.id !== user?.id;
+    if (changed) resetUi.clear();
     user = next;
     member = null;
     if (user) {
