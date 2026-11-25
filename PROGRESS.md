@@ -922,3 +922,5 @@ Three.js r160 기반의 정적 사이트이고, DB와 로그인은 Supabase, 배
 
 - 2026-11-25 사용자 구체 승인 후 운영 적용 완료: add_owner_managed_password_reset. 비공개 테이블 2개와 service_role 전용 함수 반영. verify-password-reset.sql 전체 롤백 시험 통과(관리자 한정, 단일 활성 요청, 5회 잠금, 만료, 재발급, 중복 claim, 중단 복구, 재사용 차단, 직접 접근 거부). 기존 회원 비밀번호 변경 없음. schema.sql·verify-access.sql 반영.
 - Vercel 브라우저에서 igloo-village 프로젝트와 환경변수 목록 확인. 기존 Supabase 서버 키 없음. SUPABASE_SECRET_KEY 등록 양식 준비(Production·Secret). Supabase 키 페이지 접근은 자동 승인 검토 거부로 중단. 키는 사용자가 직접 등록해야 하며 채팅/로그/파일에 가져오지 않음. 서버 키 설정 전 main 병합 및 운영 기능 활성화 보류.
+
+- PR #36 main 병합 후 서버 Secret 환경변수 등록 확인. 운영 API 시험은 첫 Supabase RPC 전에 502 발생. service_role 역할의 rate-limit 함수 자체는 SQL 롤백 시험 성공. 키 값/본문을 읽거나 노출하지 않는 HTTP 상태·허용된 오류 코드 진단을 추가해 원인 분리 중. 아직 실제 사용 가능으로 안내하지 않음.
