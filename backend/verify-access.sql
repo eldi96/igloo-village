@@ -150,4 +150,5 @@ rollback;
 
 -- 강사 초대 역할/1회 사용/만료/기존 역할 보존: verify-instructor-invites.sql (rollback)
 
--- 관리자 확인형 초기화는 verify-password-reset.sql의 독립 롤백 시험으로 검증한다.
+-- 현재 수동 초기화: verify-manual-password-reset.sql의 독립 롤백 시험으로 검증한다.
+-- verify-password-reset.sql은 이전 자동 발급 구조의 역사 기록이다.

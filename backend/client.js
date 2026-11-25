@@ -121,18 +121,25 @@ export function createVillageBackend({ config = supabaseConfig, loadSdk = () => 
     },
     async currentUser() { const api = await ready(); return (await api.auth.getUser()).data.user; },
     async passwordReset(action, fields = {}) {
-      const headers = { 'Content-Type': 'application/json' };
-      if (['list', 'issue', 'reject'].includes(action)) {
-        const { api } = await requireMember();
-        const { data, error } = await api.auth.getSession();
-        if (error || !data.session?.access_token) throw new Error('다시 로그인해주세요.');
-        headers.Authorization = `Bearer ${data.session.access_token}`;
+      if (action === 'request') {
+        const login = String(fields.login ?? '').trim().toLowerCase();
+        idToEmail(login);
+        const api = await ready();
+        unwrap(await api.rpc('request_manual_password_reset', { p_login: login }));
+        return { message: '요청을 접수했어요. 관리자에게 직접 연락해 본인 확인을 받아주세요.' };
       }
-      const response = await fetch('/api/password-reset', { method: 'POST', headers, body: JSON.stringify({ ...fields, action }) });
-      let result;
-      try { result = await response.json(); } catch { throw new Error('초기화 서버가 준비되지 않았어요. 관리자에게 직접 문의해 주세요.'); }
-      if (!response.ok) throw new Error(result.error || '처리하지 못했어요. 다시 시도해 주세요.');
-      return result;
+      if (!['list', 'complete', 'reject'].includes(action)) throw new Error('지원하지 않는 초기화 작업이에요.');
+      const { api } = await requireMember();
+      if (action === 'list') return { requests: unwrap(await api.rpc('list_manual_password_reset_requests')) };
+      if (!UUID.test(fields.requestId || '')) throw new Error('요청을 다시 선택해 주세요.');
+      unwrap(await api.rpc('resolve_manual_password_reset', { p_id: fields.requestId, p_status: action === 'complete' ? 'completed' : 'rejected' }));
+      return { message: '요청 상태를 저장했어요.' };
+    },
+    async changePassword(password) {
+      if (typeof password !== 'string' || password.length < 12 || password.length > 128) throw new Error('새 비밀번호는 12~128자로 입력해 주세요.');
+      const { api } = await requireMember();
+      unwrap(await api.auth.updateUser({ password }));
+      return { message: '비밀번호를 변경했어요. 다음 로그인부터 새 비밀번호를 사용해 주세요.' };
     },
     async signIn(id, password) {
       const api = await ready();

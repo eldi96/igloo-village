@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { villageBackend } from './backend/client.js?v=reset1';
-import { mountAuth } from './auth-ui.js?v=reset1';
+import { villageBackend } from './backend/client.js?v=manual-reset1';
+import { mountAuth } from './auth-ui.js?v=manual-reset1';
 import { mountChat } from './chat-ui.js';
 import { mountCommentMailbox } from './comment-mailbox.js?v=public-mail2';
 import { createQualityControl } from './quality.js';
