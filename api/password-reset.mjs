@@ -12,7 +12,11 @@ export function createPasswordResetHandler({env=process.env,fetchImpl=fetch,admi
     const base=env.SUPABASE_URL||supabaseConfig.url;
     const json=async(path,body,{token=secret,method='POST',publicKey=false}={})=>{
       const response=await fetchImpl(base+path,{method,headers:{apikey:publicKey?supabaseConfig.publishableKey:secret,...(String(token).startsWith('sb_secret_')?{}:{Authorization:`Bearer ${token}`}),'Content-Type':'application/json'},...(method==='GET'?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(15000)});
-      if(!response.ok)throw fail(502,'서버 요청을 완료하지 못했어요. 잠시 후 다시 시도해 주세요.');
+      if(!response.ok){
+        let code='';
+        try { const detail=await response.json(); if(/^[A-Z0-9_]{1,24}$/.test(detail.code||'')) code='_'+detail.code; } catch {}
+        throw Object.assign(fail(502,'서버 요청을 완료하지 못했어요. 잠시 후 다시 시도해 주세요.'),{supportCode:`UPSTREAM_${response.status}${code}`});
+      }
       if (response.status===204) return null;
       const text=await response.text();
       return text ? JSON.parse(text) : null;
@@ -68,7 +72,7 @@ export function createPasswordResetHandler({env=process.env,fetchImpl=fetch,admi
         return res.status(200).json({message:'비밀번호를 변경했어요. 새 비밀번호로 로그인해 주세요.'});
       }
       throw fail(400,'요청을 확인해 주세요.');
-    }catch(error){return res.status(error.status||500).json({error:error.status?error.message:'처리 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.'});}
+    }catch(error){return res.status(error.status||500).json({error:error.status?error.message:'처리 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.',...(error.supportCode?{code:error.supportCode}:{})});}
   };
 }
 export default createPasswordResetHandler();
