@@ -1,4 +1,4 @@
-import { createPasswordResetUi, PASSWORD_RESET_ADMIN_ID } from './password-reset-ui.js?v=reset1';
+import { createPasswordResetUi, PASSWORD_RESET_ADMIN_ID } from './password-reset-ui.js?v=manual-reset1';
 // 로그인 버튼과 로그인 창. 권한 판단은 DB가 하고, 여기서는 상태만 보여준다.
 const STYLE = `
   .auth-chip { position: fixed; z-index: 3; left: 24px; top: 20px; display: flex; flex-wrap: wrap; max-width: calc(100vw - 32px); align-items: center; gap: 10px; color: #e6eef4; font: 500 13px/1.4 "Segoe UI", "Malgun Gothic", system-ui, sans-serif; text-shadow: 0 1px 6px rgba(0,0,0,.7); }
@@ -136,7 +136,7 @@ export function mountAuth(backend, { onChange = () => {} } = {}) {
     showForm('이글루 마을에 들어가기', '로그인하면 내 이글루를 정하고 프로젝트를 올릴 수 있어요.', [
       field('아이디', 'id', { autocomplete: 'username', autocapitalize: 'none', spellcheck: false }),
       field('비밀번호', 'password', { type: 'password', autocomplete: 'current-password' })
-    ], '로그인', data => backend.signIn(data.get('id'), data.get('password')), [button('비밀번호 초기화 요청', openReset('openRequest')), button('임시 비밀번호로 변경', openReset('openRedeem')), button('처음이에요', openSignUp), button('둘러보기', close)]);
+    ], '로그인', data => backend.signIn(data.get('id'), data.get('password')), [button('비밀번호 초기화 요청', openReset('openRequest')), button('처음이에요', openSignUp), button('둘러보기', close)]);
   }
   function openSignUp() {
     showForm('이글루 마을 가입', '강의실에서 받은 초대 코드가 필요해요.', [
@@ -173,6 +173,7 @@ export function mountAuth(backend, { onChange = () => {} } = {}) {
     name.className = 'auth-name';
     name.textContent = member?.display_name || user.email?.split('@')[0] || '로그인됨';
     chip.append(name, button('로그아웃', signOut));
+    if (member?.approved) chip.append(button('비밀번호 변경', openReset('openChange')));
     if (member?.approved && member.id === PASSWORD_RESET_ADMIN_ID) chip.append(button('초기화 요청 관리', openReset('openAdmin')));
   }
   async function applyUser(next) {

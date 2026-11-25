@@ -75,4 +75,8 @@ export function createPasswordResetHandler({env=process.env,fetchImpl=fetch,admi
     }catch(error){return res.status(error.status||500).json({error:error.status?error.message:'처리 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.',...(error.supportCode?{code:error.supportCode}:{})});}
   };
 }
-export default createPasswordResetHandler();
+// 이전 자동 발급 구현은 회귀 기록용으로만 보존하며 운영 경로에서는 실행하지 않는다.
+export default function retiredPasswordReset(_req, res) {
+  res.setHeader('Cache-Control', 'no-store');
+  return res.status(410).json({ error: '수동 초기화 방식으로 변경됐어요. 사이트를 새로고침한 뒤 요청해 주세요.' });
+}
